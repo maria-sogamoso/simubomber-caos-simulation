@@ -1,0 +1,61 @@
+"""Main game loop and orchestration."""
+
+from __future__ import annotations
+
+import pygame
+
+from config import BACKGROUND_COLOR, FPS, HEIGHT, WINDOW_TITLE, WIDTH
+from game.enemy import Enemy
+from game.map import Map
+from game.player import Player
+
+
+class GameLoop:
+    """Encapsulates the main loop, update, and render cycle."""
+
+    def __init__(self) -> None:
+        pygame.init()
+        pygame.display.set_caption(WINDOW_TITLE)
+
+        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        self.clock = pygame.time.Clock()
+        self.running = True
+
+        self.game_map = Map()
+
+        player_start_x = self.game_map.rect.left + 48
+        player_start_y = self.game_map.rect.top + 48
+        enemy_start_x = self.game_map.rect.right - 80
+        enemy_start_y = self.game_map.rect.bottom - 80
+
+        self.player = Player(player_start_x, player_start_y, self.game_map.rect)
+        self.enemy = Enemy(enemy_start_x, enemy_start_y, self.game_map.rect)
+
+    def handle_events(self) -> None:
+        """Process pygame events and detect quit requests."""
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+
+    def update(self) -> None:
+        """Advance game state one frame."""
+        self.player.update()
+        self.enemy.update()
+
+    def render(self) -> None:
+        """Draw the current frame."""
+        self.screen.fill(BACKGROUND_COLOR)
+        self.game_map.draw(self.screen)
+        self.player.draw(self.screen)
+        self.enemy.draw(self.screen)
+        pygame.display.flip()
+
+    def run(self) -> None:
+        """Run the main loop until the window is closed."""
+        while self.running:
+            self.clock.tick(FPS)
+            self.handle_events()
+            self.update()
+            self.render()
+
+        pygame.quit()
