@@ -1,7 +1,8 @@
-"""Simple random-moving enemy."""
+"""Simple random-moving enemy with state-based directional bias."""
 
 from __future__ import annotations
 
+import math
 import random
 
 import pygame
@@ -10,6 +11,7 @@ from config import ENEMY_COLOR, ENEMY_MOVE_INTERVAL, ENEMY_SIZE, ENEMY_SPEED
 from utils.helpers import clamp
 
 KEEP_DIRECTION_PROBABILITY = 0.6
+
 ALLOWED_DIRECTIONS = (
     (1, 0),
     (-1, 0),
@@ -19,18 +21,43 @@ ALLOWED_DIRECTIONS = (
 
 
 class Enemy:
-    """Enemy with a discrete random walk and simple transition memory."""
+    """Enemy with a discrete random walk and lightweight state-based biasing.
+
+    States:
+    - wander: pure random walk (baseline behavior)
+    - chase: biased movement towards player
+    - flee: biased movement away from threats
+
+    This model keeps the original stochastic random walk and adds
+    minimal state-driven directional bias without changing core mechanics.
+    """
 
     def __init__(self, x: int, y: int, bounds: pygame.Rect) -> None:
         self.rect = pygame.Rect(x, y, ENEMY_SIZE, ENEMY_SIZE)
         self.speed = ENEMY_SPEED
         self.bounds = bounds.copy()
+
         self.move_interval = ENEMY_MOVE_INTERVAL
         self.direction = (0, 0)
         self.frame_counter = 0
 
+        # --- State system (simple, non-Markov explicit) ---
+        self.state = "wander"
+
+        # --- Perception values ---
+        self.dist_to_player = float("inf")
+        self.dist_to_threat = float("inf")
+        self.player_pos: tuple[int, int] | None = None
+        self.threat_pos: tuple[int, int] | None = None
+
+        # --- Thresholds ---
+        self.chase_threshold = 150
+        self.flee_threshold = 100
+
+    # Movement utilities
+
     def _get_valid_directions(self) -> list[tuple[int, int]]:
-        """Return the directions that keep the enemy inside the map bounds."""
+        """Return directions that keep the enemy inside map bounds."""
         valid_directions: list[tuple[int, int]] = []
 
         for dx, dy in ALLOWED_DIRECTIONS:
@@ -50,8 +77,117 @@ class Enemy:
 
         return valid_directions
 
+    # Perception
+
+    def perceive(self, player=None, bomb_system=None) -> None:
+        """Compute distances to player and threats (safe optional input)."""
+
+        self.dist_to_player = float("inf")
+        self.dist_to_threat = float("inf")
+        self.player_pos = None
+        self.threat_pos = None
+
+        # ---------------- Player perception ----------------
+        if player is not None and hasattr(player, "rect"):
+            self.player_pos = (player.rect.centerx, player.rect.centery)
+
+            dx = self.player_pos[0] - self.rect.centerx
+            dy = self.player_pos[1] - self.rect.centery
+            self.dist_to_player = math.sqrt(dx * dx + dy * dy)
+
+        # ---------------- Threat perception ----------------
+        if bomb_system is not None:
+            bombs = getattr(bomb_system, "bombs", [])
+
+            for bomb in bombs:
+                if not hasattr(bomb, "rect"):
+                    continue
+
+                # Exploding bombs
+                if getattr(bomb, "is_exploding", False):
+                    areas = []
+
+                    if hasattr(bomb, "get_explosion_rects_clamped"):
+                        map_rect = getattr(bomb_system, "map_rect", None)
+                        if map_rect is not None:
+                            areas = bomb.get_explosion_rects_clamped(map_rect)
+                    elif hasattr(bomb, "get_explosion_rects"):
+                        areas = bomb.get_explosion_rects()
+                    else:
+                        areas = [bomb.rect]
+
+                    for area in areas:
+                        dx = area.centerx - self.rect.centerx
+                        dy = area.centery - self.rect.centery
+                        distance = math.sqrt(dx * dx + dy * dy)
+
+                        if distance < self.dist_to_threat:
+                            self.dist_to_threat = distance
+                            self.threat_pos = (area.centerx, area.centery)
+
+                # Active bombs
+                else:
+                    dx = bomb.rect.centerx - self.rect.centerx
+                    dy = bomb.rect.centery - self.rect.centery
+                    distance = math.sqrt(dx * dx + dy * dy)
+
+                    if distance < self.dist_to_threat:
+                        self.dist_to_threat = distance
+                        self.threat_pos = (bomb.rect.centerx, bomb.rect.centery)
+
+    # State decision (simple heuristic, no Markov matrix)
+
+    def decide_state(self) -> None:
+        """Select state based on simple distance thresholds."""
+
+        if self.threat_pos is not None and self.dist_to_threat < self.flee_threshold:
+            self.state = "flee"
+        elif self.player_pos is not None and self.dist_to_player < self.chase_threshold:
+            self.state = "chase"
+        else:
+            self.state = "wander"
+
+    # Direction biasing (light modification, not full override)
+
+    def _bias_direction(self, target: tuple[int, int], flee: bool = False) -> None:
+        """Choose best grid direction towards or away from target."""
+
+        valid_directions = self._get_valid_directions()
+        if not valid_directions:
+            self.direction = (0, 0)
+            return
+
+        best_dir = None
+        best_score = None
+
+        for dx, dy in valid_directions:
+            next_x = self.rect.centerx + dx * self.speed
+            next_y = self.rect.centery + dy * self.speed
+
+            score = math.sqrt((target[0] - next_x) ** 2 + (target[1] - next_y) ** 2)
+
+            if best_score is None:
+                best_score = score
+                best_dir = (dx, dy)
+                continue
+
+            if flee:
+                if score > best_score:
+                    best_score = score
+                    best_dir = (dx, dy)
+            else:
+                if score < best_score:
+                    best_score = score
+                    best_dir = (dx, dy)
+
+        if best_dir is not None:
+            self.direction = best_dir
+
+    # Core movement
+
     def _choose_direction(self) -> None:
-        """Choose the next direction using a Markov-like transition rule."""
+        """Random walk base behavior (WANDER only)."""
+
         valid_directions = self._get_valid_directions()
 
         if not valid_directions:
@@ -64,28 +200,51 @@ class Enemy:
         if keep_current:
             return
 
-        candidate_directions = [direction for direction in valid_directions if direction != self.direction]
-        if not candidate_directions:
-            candidate_directions = valid_directions
+        candidates = [d for d in valid_directions if d != self.direction]
+        if not candidates:
+            candidates = valid_directions
 
-        index = int(random.random() * len(candidate_directions))
-        if index >= len(candidate_directions):
-            index = len(candidate_directions) - 1
+        self.direction = random.choice(candidates)
 
-        self.direction = candidate_directions[index]
+    # Update loop
+    def update(self, player=None, bomb_system=None) -> None:
+        """Main update cycle: perceive → decide → act."""
 
-    def update(self) -> None:
-        """Advance the enemy using a discrete random walk."""
         self.frame_counter += 1
+
+        self.perceive(player, bomb_system)
+        self.decide_state()
+
         if self.frame_counter % self.move_interval == 1:
-            self._choose_direction()
+
+            # ---------------- WANDER ----------------
+            if self.state == "wander":
+                self._choose_direction()
+
+            # ---------------- CHASE ----------------
+            elif self.state == "chase" and self.player_pos is not None:
+                self._bias_direction(self.player_pos, flee=False)
+
+            # ---------------- FLEE ----------------
+            elif self.state == "flee" and self.threat_pos is not None:
+                self._bias_direction(self.threat_pos, flee=True)
 
         dx = self.direction[0] * self.speed
         dy = self.direction[1] * self.speed
 
-        self.rect.x = clamp(self.rect.x + dx, self.bounds.left, self.bounds.right - self.rect.width)
-        self.rect.y = clamp(self.rect.y + dy, self.bounds.top, self.bounds.bottom - self.rect.height)
+        self.rect.x = clamp(
+            self.rect.x + dx,
+            self.bounds.left,
+            self.bounds.right - self.rect.width,
+        )
+        self.rect.y = clamp(
+            self.rect.y + dy,
+            self.bounds.top,
+            self.bounds.bottom - self.rect.height,
+        )
+
+    # Rendering
 
     def draw(self, screen: pygame.Surface) -> None:
-        """Render the enemy."""
+        """Render enemy."""
         pygame.draw.rect(screen, ENEMY_COLOR, self.rect)

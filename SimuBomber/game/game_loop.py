@@ -54,16 +54,25 @@ class GameLoop:
         """Advance game state by dt milliseconds."""
         self.player.update()
         if self.enemy is not None:
-            self.enemy.update()
+            self.enemy.update(self.player, self.bomb_system)
 
         # Update bomb system and handle explosion collisions
         self.bomb_system.update(dt)
 
-        # Sample metrics: pass enemies list and bomb/explosion counts
+        # Sample metrics
         bombs_active = len(self.bomb_system.bombs)
         explosions_active = sum(1 for b in self.bomb_system.bombs if b.is_exploding)
         tick = pygame.time.get_ticks()
-        self.metrics.sample_frame(tick, dt, [self.enemy], bombs_active, explosions_active)
+
+        enemies = [self.enemy] if self.enemy is not None else []
+
+        self.metrics.sample_frame(
+            tick,
+            dt,
+            enemies,
+            bombs_active,
+            explosions_active
+        )
 
         if self.enemy is not None and self.bomb_system.check_enemy_collision(self.enemy.rect):
             self.enemy = None
