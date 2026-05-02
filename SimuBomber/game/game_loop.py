@@ -9,6 +9,7 @@ from game.enemy import Enemy
 from game.map import Map
 from game.player import Player
 from game.bomb import BombSystem
+from game.metrics import MetricsSystem
 
 
 class GameLoop:
@@ -34,6 +35,8 @@ class GameLoop:
 
         # Bomb system: encapsulates placement rules and bombs
         self.bomb_system = BombSystem()
+        # Metrics system for logging and validation
+        self.metrics = MetricsSystem(self.game_map.rect)
 
     def handle_events(self) -> None:
         """Process pygame events and detect quit requests."""
@@ -55,6 +58,13 @@ class GameLoop:
 
         # Update bomb system and handle explosion collisions
         self.bomb_system.update(dt)
+
+        # Sample metrics: pass enemies list and bomb/explosion counts
+        bombs_active = len(self.bomb_system.bombs)
+        explosions_active = sum(1 for b in self.bomb_system.bombs if b.is_exploding)
+        tick = pygame.time.get_ticks()
+        self.metrics.sample_frame(tick, dt, [self.enemy], bombs_active, explosions_active)
+
         if self.enemy is not None and self.bomb_system.check_enemy_collision(self.enemy.rect):
             self.enemy = None
 
