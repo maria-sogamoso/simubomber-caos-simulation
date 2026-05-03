@@ -15,6 +15,11 @@ class Player:
         self.rect = pygame.Rect(x, y, PLAYER_SIZE, PLAYER_SIZE)
         self.speed = PLAYER_SPEED
         self.bounds = bounds.copy()
+        self.max_lives = 3
+        self.lives = 3
+        self.invulnerable = False
+        self.invulnerability_time = 1000
+        self.last_hit_time = 0
 
     def handle_input(self) -> tuple[int, int]:
         """Translate keyboard state into a movement vector."""
@@ -40,6 +45,24 @@ class Player:
         self.rect.x = clamp(self.rect.x + dx, self.bounds.left, self.bounds.right - self.rect.width)
         self.rect.y = clamp(self.rect.y + dy, self.bounds.top, self.bounds.bottom - self.rect.height)
 
+        if self.invulnerable:
+            now = pygame.time.get_ticks()
+            if now - self.last_hit_time >= self.invulnerability_time:
+                self.invulnerable = False
+
+    def take_damage(self, current_time: int) -> None:
+        """Apply one hit and start temporary invulnerability."""
+        if self.invulnerable:
+            return
+
+        self.lives = max(0, self.lives - 1)
+        self.invulnerable = True
+        self.last_hit_time = current_time
+
     def draw(self, screen: pygame.Surface) -> None:
         """Render the player."""
+        if self.invulnerable:
+            if pygame.time.get_ticks() % 200 < 100:
+                return  # blink effect during invulnerability
+
         pygame.draw.rect(screen, PLAYER_COLOR, self.rect)

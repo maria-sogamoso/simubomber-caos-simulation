@@ -71,7 +71,7 @@ class GameLoop:
         """Advance game state by dt milliseconds."""
         self.player.update()
         # Update bomb system and handle explosion collisions
-        
+
         self.bomb_system.update(dt)
         # Calculate system chaos level
 
@@ -94,6 +94,15 @@ class GameLoop:
             enemy for enemy in self.enemies
             if not self.bomb_system.check_enemy_collision(enemy.rect)
         ]
+
+        # Handle player-enemy collisions with temporary invulnerability
+        for enemy in self.enemies:
+            if enemy.rect.colliderect(self.player.rect):
+                self.player.take_damage(pygame.time.get_ticks())
+                break
+
+        if self.player.lives <= 0:
+            self.running = False
 
         # Sample metrics
         tick = pygame.time.get_ticks()
