@@ -54,6 +54,11 @@ class Enemy:
         self.chase_threshold = 150
         self.flee_threshold = 100
 
+        # --- Chaos system (baseline values for recovery) ---
+        self.base_move_interval = self.move_interval
+        self.base_chase_threshold = self.chase_threshold
+        self.bias_strength = 0.0
+
     # Movement utilities
 
     def _get_valid_directions(self) -> list[tuple[int, int]]:
@@ -76,6 +81,23 @@ class Enemy:
                 valid_directions.append((dx, dy))
 
         return valid_directions
+
+    # Chaos system
+
+    def apply_chaos(self, chaos: float) -> None:
+        """Adjust behavior based on system chaos level (0-10).
+
+        Higher chaos = faster decisions, longer chase ranges, more aggressive bias.
+        Always computed from base values (not cumulative).
+        """
+        # 1. Faster decision-making under chaos
+        self.move_interval = max(4, int(self.base_move_interval - chaos * 0.5))
+
+        # 2. Extended chase range
+        self.chase_threshold = self.base_chase_threshold + chaos * 8
+
+        # 3. Reduced randomness (deterministic bias)
+        self.bias_strength = min(0.8, chaos / 10.0)
 
     # Perception
 
@@ -217,17 +239,17 @@ class Enemy:
 
         if self.frame_counter % self.move_interval == 1:
 
-            # ---------------- WANDER ----------------
-            if self.state == "wander":
-                self._choose_direction()
+            # Base decision (random walk)
+            self._choose_direction()
 
-            # ---------------- CHASE ----------------
-            elif self.state == "chase" and self.player_pos is not None:
-                self._bias_direction(self.player_pos, flee=False)
+            # Chaos-influenced bias: apply only with bias_strength probability
+            if self.state == "chase" and self.player_pos is not None:
+                if random.random() < self.bias_strength:
+                    self._bias_direction(self.player_pos, flee=False)
 
-            # ---------------- FLEE ----------------
             elif self.state == "flee" and self.threat_pos is not None:
-                self._bias_direction(self.threat_pos, flee=True)
+                if random.random() < self.bias_strength:
+                    self._bias_direction(self.threat_pos, flee=True)
 
         dx = self.direction[0] * self.speed
         dy = self.direction[1] * self.speed

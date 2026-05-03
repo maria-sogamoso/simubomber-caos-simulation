@@ -27,11 +27,28 @@ class GameLoop:
 
         player_start_x = self.game_map.rect.left + 48
         player_start_y = self.game_map.rect.top + 48
-        enemy_start_x = self.game_map.rect.right - 80
-        enemy_start_y = self.game_map.rect.bottom - 80
 
         self.player = Player(player_start_x, player_start_y, self.game_map.rect)
-        self.enemy = Enemy(enemy_start_x, enemy_start_y, self.game_map.rect)
+
+        # Spawn 3 enemies at different positions
+        self.enemies = [
+            Enemy(
+                self.game_map.rect.right - 80,
+                self.game_map.rect.bottom - 80,
+                self.game_map.rect
+            ),
+            Enemy(
+                self.game_map.rect.left + 80,
+                self.game_map.rect.bottom - 80,
+                self.game_map.rect
+            ),
+            Enemy(
+                self.game_map.rect.centerx,
+                self.game_map.rect.top + 80,
+                self.game_map.rect
+            ),
+        ]
+        self.system_chaos_level = 0.0
 
         # Bomb system: encapsulates placement rules and bombs
         self.bomb_system = BombSystem()
@@ -53,37 +70,48 @@ class GameLoop:
     def update(self, dt: int) -> None:
         """Advance game state by dt milliseconds."""
         self.player.update()
-        if self.enemy is not None:
-            self.enemy.update(self.player, self.bomb_system)
-
         # Update bomb system and handle explosion collisions
+        
         self.bomb_system.update(dt)
+        # Calculate system chaos level
 
-        # Sample metrics
         bombs_active = len(self.bomb_system.bombs)
         explosions_active = sum(1 for b in self.bomb_system.bombs if b.is_exploding)
+        enemies_count = len(self.enemies)
+        raw_chaos = enemies_count + bombs_active + explosions_active
+        self.system_chaos_level = min(10.0, raw_chaos)
+
+        # Apply chaos to all enemies
+        for enemy in self.enemies:
+            enemy.apply_chaos(self.system_chaos_level)
+
+        # Update all enemies
+        for enemy in self.enemies:
+            enemy.update(self.player, self.bomb_system)
+
+        # Handle enemy-bomb collisions
+        self.enemies = [
+            enemy for enemy in self.enemies
+            if not self.bomb_system.check_enemy_collision(enemy.rect)
+        ]
+
+        # Sample metrics
         tick = pygame.time.get_ticks()
-
-        enemies = [self.enemy] if self.enemy is not None else []
-
         self.metrics.sample_frame(
             tick,
             dt,
-            enemies,
+            self.enemies,
             bombs_active,
             explosions_active
         )
-
-        if self.enemy is not None and self.bomb_system.check_enemy_collision(self.enemy.rect):
-            self.enemy = None
 
     def render(self) -> None:
         """Draw the current frame."""
         self.screen.fill(BACKGROUND_COLOR)
         self.game_map.draw(self.screen)
         self.player.draw(self.screen)
-        if self.enemy is not None:
-            self.enemy.draw(self.screen)
+        for enemy in self.enemies:
+            enemy.draw(self.screen)
 
         # Draw bombs and explosions
         self.bomb_system.draw(self.screen)
