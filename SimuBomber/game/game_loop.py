@@ -73,6 +73,11 @@ class GameLoop:
         # Update bomb system and handle explosion collisions
 
         self.bomb_system.update(dt)
+
+        # Check for player damage from explosions (own bombs = 0.5, others = 1.0)
+        damage = self.bomb_system.get_player_explosion_damage(self.player.rect)
+        if damage > 0.0:
+            self.player.take_damage(damage, pygame.time.get_ticks())
         # Calculate system chaos level
 
         bombs_active = len(self.bomb_system.bombs)
@@ -98,7 +103,7 @@ class GameLoop:
         # Handle player-enemy collisions with temporary invulnerability
         for enemy in self.enemies:
             if enemy.rect.colliderect(self.player.rect):
-                self.player.take_damage(pygame.time.get_ticks())
+                self.player.take_damage(1.0, pygame.time.get_ticks())
                 break
 
         if self.player.lives <= 0:
@@ -114,6 +119,31 @@ class GameLoop:
             explosions_active
         )
 
+    def draw_ui(self) -> None:
+        """Draw the player's lives as simple heart rectangles."""
+        start_x = 10
+        start_y = 10
+        heart_size = 20
+        spacing = 5
+
+        lives = float(self.player.lives)
+        max_lives = int(self.player.max_lives)
+
+        for index in range(max_lives):
+            x = start_x + index * (heart_size + spacing)
+            rect = pygame.Rect(x, start_y, heart_size, heart_size)
+
+            if lives >= 1.0:
+                pygame.draw.rect(self.screen, (220, 40, 40), rect)
+            elif lives >= 0.5:
+                half_rect = pygame.Rect(x, start_y, heart_size // 2, heart_size)
+                pygame.draw.rect(self.screen, (220, 40, 40), half_rect)
+                pygame.draw.rect(self.screen, (130, 130, 130), rect, 1)
+            else:
+                pygame.draw.rect(self.screen, (130, 130, 130), rect, 1)
+
+            lives -= 1.0
+
     def render(self) -> None:
         """Draw the current frame."""
         self.screen.fill(BACKGROUND_COLOR)
@@ -124,6 +154,8 @@ class GameLoop:
 
         # Draw bombs and explosions
         self.bomb_system.draw(self.screen)
+
+        self.draw_ui()
 
         pygame.display.flip()
 

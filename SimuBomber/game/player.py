@@ -16,7 +16,7 @@ class Player:
         self.speed = PLAYER_SPEED
         self.bounds = bounds.copy()
         self.max_lives = 3
-        self.lives = 3
+        self.lives = 3.0
         self.invulnerable = False
         self.invulnerability_time = 1000
         self.last_hit_time = 0
@@ -50,12 +50,15 @@ class Player:
             if now - self.last_hit_time >= self.invulnerability_time:
                 self.invulnerable = False
 
-    def take_damage(self, current_time: int) -> None:
-        """Apply one hit and start temporary invulnerability."""
+    def take_damage(self, damage: float, current_time: int) -> None:
+        """Apply damage (float) and start temporary invulnerability.
+
+        Respects `invulnerable` flag and records the hit time.
+        """
         if self.invulnerable:
             return
 
-        self.lives = max(0, self.lives - 1)
+        self.lives = max(0.0, self.lives - float(damage))
         self.invulnerable = True
         self.last_hit_time = current_time
 

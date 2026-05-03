@@ -139,10 +139,35 @@ class BombSystem:
         gx = max(self.map_rect.left, min(gx, self.map_rect.right - PLAYER_SIZE))
         gy = max(self.map_rect.top, min(gy, self.map_rect.bottom - PLAYER_SIZE))
 
-        # Create bomb at aligned grid position
-        self.bombs.append(Bomb(gx, gy))
+        # Create bomb at aligned grid position and tag owner as player
+        bomb = Bomb(gx, gy)
+        bomb.owner = "player"
+        self.bombs.append(bomb)
         self.last_place_time = current_time
         return True
+
+    def get_player_explosion_damage(self, player_rect: pygame.Rect) -> float:
+        """
+        Returns damage to player based on explosion collision.
+        0.0 -> no damage
+        0.5 -> own bomb
+        1.0 -> other source
+        """
+        for bomb in self.bombs:
+            if bomb.is_exploding_now():
+                if hasattr(bomb, "get_explosion_rects_clamped"):
+                    areas = bomb.get_explosion_rects_clamped(self.map_rect)
+                else:
+                    areas = [bomb.rect]
+
+                for area in areas:
+                    if area.colliderect(player_rect):
+                        if getattr(bomb, "owner", None) == "player":
+                            return 0.5
+                        else:
+                            return 1.0
+
+        return 0.0
 
     def update(self, dt: int) -> None:
         for b in self.bombs:
