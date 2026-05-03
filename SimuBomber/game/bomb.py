@@ -42,6 +42,9 @@ class Bomb:
         self.elapsed = 0
         self.is_exploding = False
         self.range = EXPLOSION_RANGE
+        # Timestamp when bomb was placed and grace period before it becomes solid
+        self.spawn_time = pygame.time.get_ticks()
+        self.blocking_delay = 700  # milliseconds
 
     def update(self, dt: int) -> None:
         """Advance bomb timers by dt milliseconds."""
@@ -103,6 +106,14 @@ class Bomb:
             # (BombSystem will draw the full clamped area.)
         else:
             pygame.draw.rect(screen, BOMB_COLOR, self.rect)
+
+    def is_blocking(self, current_time: int) -> bool:
+        """Return True if the bomb should block movement at `current_time`.
+
+        Bombs are non-blocking for a short delay after placement to allow the
+        player to step away; after `blocking_delay` they become solid.
+        """
+        return (current_time - getattr(self, "spawn_time", 0)) >= getattr(self, "blocking_delay", 700)
 
 
 class BombSystem:

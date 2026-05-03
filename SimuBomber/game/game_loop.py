@@ -69,7 +69,12 @@ class GameLoop:
 
     def update(self, dt: int) -> None:
         """Advance game state by dt milliseconds."""
+        # Player movement with collision resolution against bombs
+        old_pos = self.player.rect.topleft
         self.player.update()
+        # Player may pass bombs only during their initial grace window; pass True
+        # to indicate the player type that can pass recently-placed bombs.
+        self.resolve_collisions(self.player.rect, old_pos, can_pass_bombs=True)
         # Update bomb system and handle explosion collisions
 
         self.bomb_system.update(dt)
@@ -86,13 +91,13 @@ class GameLoop:
         raw_chaos = enemies_count + bombs_active + explosions_active
         self.system_chaos_level = min(10.0, raw_chaos)
 
-        # Apply chaos to all enemies
+        # Apply chaos and update all enemies with collision resolution
         for enemy in self.enemies:
             enemy.apply_chaos(self.system_chaos_level)
-
-        # Update all enemies
-        for enemy in self.enemies:
+            old_pos = enemy.rect.topleft
             enemy.update(self.player, self.bomb_system)
+            # Enemies must never pass through bombs
+            self.resolve_collisions(enemy.rect, old_pos, can_pass_bombs=False)
 
         # Handle enemy-bomb collisions
         self.enemies = [
@@ -158,6 +163,36 @@ class GameLoop:
         self.draw_ui()
 
         pygame.display.flip()
+
+    def resolve_collisions(self, rect: pygame.Rect, old_pos: tuple[int, int], can_pass_bombs: bool) -> None:
+        """Resolve collisions against blocking objects (currently bombs only).
+
+        If an entity's rect collides with a bomb that is currently blocking,
+        reset its position to `old_pos`. Players can optionally pass bombs
+        during the short grace period after placement by setting
+        `can_pass_bombs=True`.
+        """
+        now = pygame.time.get_ticks()
+
+        for bomb in self.bomb_system.bombs:
+
+            # If this caller allows passing bombs (player grace window), skip
+            if can_pass_bombs and not bomb.is_blocking(now):
+             continue
+            
+            # Skip non-blocking bombs for enemies too (consistency)
+            if not bomb.is_blocking(now):
+             continue
+
+            was_inside = pygame.Rect(old_pos, rect.size).colliderect(bomb.rect)
+            is_inside = rect.colliderect(bomb.rect)
+
+            if was_inside:
+                continue
+
+            if is_inside:
+                rect.x, rect.y = old_pos
+                return
 
     def run(self) -> None:
         """Run the main loop until the window is closed."""
