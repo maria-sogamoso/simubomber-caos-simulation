@@ -9,6 +9,7 @@ from game.enemy import Enemy
 from game.map import Map
 from game.player import Player
 from game.bomb import BombSystem
+from game.powerup import PowerUpSystem
 from game.metrics import MetricsSystem
 
 
@@ -52,6 +53,7 @@ class GameLoop:
 
         # Bomb system: encapsulates placement rules and bombs
         self.bomb_system = BombSystem()
+        self.powerup_system = PowerUpSystem()
         # Metrics system for logging and validation
         self.metrics = MetricsSystem(self.game_map.rect)
 
@@ -83,6 +85,7 @@ class GameLoop:
         damage = self.bomb_system.get_player_explosion_damage(self.player.rect)
         if damage > 0.0:
             self.player.take_damage(damage, pygame.time.get_ticks())
+        self.powerup_system.update(self.player)
         # Calculate system chaos level
 
         bombs_active = len(self.bomb_system.bombs)
@@ -99,11 +102,16 @@ class GameLoop:
             # Enemies must never pass through bombs
             self.resolve_collisions(enemy.rect, old_pos, can_pass_bombs=False)
 
+        previous_enemies = self.enemies.copy()
         # Handle enemy-bomb collisions
         self.enemies = [
             enemy for enemy in self.enemies
             if not self.bomb_system.check_enemy_collision(enemy.rect)
         ]
+
+        removed_enemies = [enemy for enemy in previous_enemies if enemy not in self.enemies]
+        for enemy in removed_enemies:
+            self.powerup_system.spawn_from_enemy(enemy.rect.center)
 
         # Handle player-enemy collisions with temporary invulnerability
         for enemy in self.enemies:
@@ -159,6 +167,8 @@ class GameLoop:
 
         # Draw bombs and explosions
         self.bomb_system.draw(self.screen)
+
+        self.powerup_system.draw(self.screen)
 
         self.draw_ui()
 

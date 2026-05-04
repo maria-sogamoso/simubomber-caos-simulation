@@ -13,6 +13,7 @@ class Player:
 
     def __init__(self, x: int, y: int, bounds: pygame.Rect) -> None:
         self.rect = pygame.Rect(x, y, PLAYER_SIZE, PLAYER_SIZE)
+        self.base_speed = PLAYER_SPEED
         self.speed = PLAYER_SPEED
         self.bounds = bounds.copy()
         self.max_lives = 3
@@ -20,6 +21,8 @@ class Player:
         self.invulnerable = False
         self.invulnerability_time = 1000
         self.last_hit_time = 0
+        self.speed_boost_active = False
+        self.speed_boost_end_time = 0
 
     def handle_input(self) -> tuple[int, int]:
         """Translate keyboard state into a movement vector."""
@@ -41,6 +44,11 @@ class Player:
 
     def update(self) -> None:
         """Update the player position and keep it inside the map bounds."""
+        current_time = pygame.time.get_ticks()
+        if self.speed_boost_active and current_time >= self.speed_boost_end_time:
+            self.speed = self.base_speed
+            self.speed_boost_active = False
+
         dx, dy = self.handle_input()
         self.rect.x = clamp(self.rect.x + dx, self.bounds.left, self.bounds.right - self.rect.width)
         self.rect.y = clamp(self.rect.y + dy, self.bounds.top, self.bounds.bottom - self.rect.height)
