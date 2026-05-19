@@ -185,14 +185,10 @@ class GameLoop:
         now = pygame.time.get_ticks()
 
         for bomb in self.bomb_system.bombs:
-
-            # If this caller allows passing bombs (player grace window), skip
+            # Only the player gets a grace window to leave the placed bomb tile.
+            # Enemies must treat bombs as solid immediately after placement.
             if can_pass_bombs and not bomb.is_blocking(now):
-             continue
-            
-            # Skip non-blocking bombs for enemies too (consistency)
-            if not bomb.is_blocking(now):
-             continue
+                continue
 
             was_inside = pygame.Rect(old_pos, rect.size).colliderect(bomb.rect)
             is_inside = rect.colliderect(bomb.rect)

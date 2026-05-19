@@ -6,6 +6,8 @@ This module provides:
   and exposes `try_place_bomb`, `update`, `draw`, and collision checks.
 """
 
+# agregar empujar bombas
+
 from __future__ import annotations
 
 import pygame
