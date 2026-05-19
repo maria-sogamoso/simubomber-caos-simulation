@@ -5,7 +5,8 @@ from __future__ import annotations
 import pygame
 
 from config import BACKGROUND_COLOR, FPS, HEIGHT, WINDOW_TITLE, WIDTH, PLAYER_SIZE
-from game.enemy import Enemy
+from game.random_enemy import RandomEnemy
+from game.agent_enemy import AgentEnemy
 from game.map import Map
 from game.player import Player
 from game.bomb import BombSystem
@@ -31,19 +32,19 @@ class GameLoop:
 
         self.player = Player(player_start_x, player_start_y, self.game_map.rect)
 
-        # Spawn 3 enemies at different positions
+        # Spawn 2 RandomEnemy and 1 AgentEnemy
         self.enemies = [
-            Enemy(
+            RandomEnemy(
                 self.game_map.rect.right - 80,
                 self.game_map.rect.bottom - 80,
                 self.game_map.rect
             ),
-            Enemy(
+            RandomEnemy(
                 self.game_map.rect.left + 80,
                 self.game_map.rect.bottom - 80,
                 self.game_map.rect
             ),
-            Enemy(
+            AgentEnemy(
                 self.game_map.rect.centerx,
                 self.game_map.rect.top + 80,
                 self.game_map.rect
@@ -94,11 +95,18 @@ class GameLoop:
         raw_chaos = enemies_count + bombs_active + explosions_active
         self.system_chaos_level = min(10.0, raw_chaos)
 
-        # Apply chaos and update all enemies with collision resolution
+        # Update all enemies. Only AgentEnemy uses chaos and perception.
         for enemy in self.enemies:
-            enemy.apply_chaos(self.system_chaos_level)
+            if isinstance(enemy, AgentEnemy):
+                enemy.apply_chaos(self.system_chaos_level)
+
             old_pos = enemy.rect.topleft
-            enemy.update(self.player, self.bomb_system)
+
+            if isinstance(enemy, AgentEnemy):
+                enemy.update(self.player, self.bomb_system)
+            else:
+                enemy.update()
+
             # Enemies must never pass through bombs
             self.resolve_collisions(enemy.rect, old_pos, can_pass_bombs=False)
 
@@ -185,8 +193,8 @@ class GameLoop:
         now = pygame.time.get_ticks()
 
         for bomb in self.bomb_system.bombs:
-            # Only the player gets a grace window to leave the placed bomb tile.
-            # Enemies must treat bombs as solid immediately after placement.
+            # If this caller allows passing bombs (player grace window), skip
+            # only during the bomb's short non-blocking window.
             if can_pass_bombs and not bomb.is_blocking(now):
                 continue
 
