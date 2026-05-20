@@ -24,8 +24,8 @@ class AgentEnemy(BaseEnemy):
     heuristics. Movement and drawing are delegated to `BaseEnemy`.
     """
 
-    def __init__(self, x: int, y: int, bounds: pygame.Rect) -> None:
-        super().__init__(x, y, bounds)
+    def __init__(self, x: int, y: int, bounds: pygame.Rect, seed: int | None = None) -> None:
+        super().__init__(x, y, bounds, seed=seed)
 
         # State system
         self.state = "wander"
@@ -157,11 +157,21 @@ class AgentEnemy(BaseEnemy):
 
             # Apply bias with probability `bias_strength`
             if self.state == "chase" and self.player_pos is not None:
-                if random.random() < self.bias_strength:
+                r = None
+                if getattr(self, 'lcg', None) is not None:
+                    r = self.lcg.siguiente_Ri_Congruencia_Lineal(1)[0]
+                else:
+                    r = random.random()
+                if r < self.bias_strength:
                     self._bias_direction(self.player_pos, flee=False)
 
             elif self.state == "flee" and self.threat_pos is not None:
-                if random.random() < self.bias_strength:
+                r = None
+                if getattr(self, 'lcg', None) is not None:
+                    r = self.lcg.siguiente_Ri_Congruencia_Lineal(1)[0]
+                else:
+                    r = random.random()
+                if r < self.bias_strength:
                     self._bias_direction(self.threat_pos, flee=True)
 
         # Movement is handled by BaseEnemy

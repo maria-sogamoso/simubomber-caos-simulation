@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-import random
+import os
+import sys
+import time
 
 import pygame
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+from generadores_numeros_pseudoaleatorios.generador_numeros.congruencia_lineal import GeneradorCongruenciaLineal
 
 POWERUP_SIZE = 24
 HEALTH_COLOR = (220, 60, 60)
@@ -48,18 +53,32 @@ class PowerUp:
 class PowerUpSystem:
     """Manage spawning, collection and rendering of power-ups."""
 
-    def __init__(self) -> None:
+    NO_DROP_PROBABILITY = 0.65
+    HEALTH_DROP_PROBABILITY = 0.20
+    SPEED_DROP_PROBABILITY = 0.15
+
+    def __init__(self, seed: int | None = None) -> None:
         self.powerups: list[PowerUp] = []
+        if seed is None:
+            seed = (int(time.time() * 1000000) + id(self)) % (2**32 - 1)
+            if seed == 0:
+                seed = 1
+        self.lcg = GeneradorCongruenciaLineal(seed)
+
+    def _sample_drop_type(self) -> str | None:
+        """Sample a power-up outcome using the project PRNG."""
+        r = self.lcg.siguiente_Ri_Congruencia_Lineal(1)[0]
+        if r < self.NO_DROP_PROBABILITY:
+            return None
+        if r < self.NO_DROP_PROBABILITY + self.HEALTH_DROP_PROBABILITY:
+            return "health"
+        return "speed"
 
     def spawn_from_enemy(self, position: tuple[int, int]) -> None:
         """Spawn a power-up from a defeated enemy using Monte Carlo sampling."""
-        r = random.random()
-        if r < 0.65:
+        powerup_type = self._sample_drop_type()
+        if powerup_type is None:
             return
-        if r < 0.85:
-            powerup_type = "health"
-        else:
-            powerup_type = "speed"
 
         center_x, center_y = position
         x = center_x - POWERUP_SIZE // 2

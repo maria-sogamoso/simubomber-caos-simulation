@@ -1,0 +1,4 @@
+escenario,corridas,chaos,player_distance,threat_distance,wander_freq,chase_freq,flee_freq,bias_rate,move_interval,chase_threshold,bias_strength
+Exploración,5000,1.5,220.0,180.0,1.0,0.0,0.0,0.0,7,162.0,0.15
+Caza,5000,4.0,90.0,180.0,0.0,1.0,0.0,0.4042,6,182.0,0.4
+Huida,5000,7.5,140.0,60.0,0.0,0.0,1.0,0.7562,4,210.0,0.75

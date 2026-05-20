@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pygame
 
+import os
+import time
 from config import BACKGROUND_COLOR, FPS, HEIGHT, WINDOW_TITLE, WIDTH, PLAYER_SIZE
 from game.random_enemy import RandomEnemy
 from game.agent_enemy import AgentEnemy
@@ -12,12 +14,13 @@ from game.player import Player
 from game.bomb import BombSystem
 from game.powerup import PowerUpSystem
 from game.metrics import MetricsSystem
+from game.dynamics import SistemaDinamicoRuntime
 
 
 class GameLoop:
     """Encapsulates the main loop, update, and render cycle."""
 
-    def __init__(self) -> None:
+    def __init__(self, master_seed: int | None = None) -> None:
         pygame.init()
         pygame.display.set_caption(WINDOW_TITLE)
 
@@ -32,29 +35,31 @@ class GameLoop:
 
         self.player = Player(player_start_x, player_start_y, self.game_map.rect)
 
-        # Spawn 2 RandomEnemy and 1 AgentEnemy
-        self.enemies = [
-            RandomEnemy(
-                self.game_map.rect.right - 80,
-                self.game_map.rect.bottom - 80,
-                self.game_map.rect
-            ),
-            RandomEnemy(
-                self.game_map.rect.left + 80,
-                self.game_map.rect.bottom - 80,
-                self.game_map.rect
-            ),
-            AgentEnemy(
-                self.game_map.rect.centerx,
-                self.game_map.rect.top + 80,
-                self.game_map.rect
-            ),
+        # Spawn 2 RandomEnemy and 1 AgentEnemy using per-enemy derived seeds
+        base = master_seed if master_seed is not None else int(time.time() * 1000000)
+        enemies_positions = [
+            (self.game_map.rect.right - 80, self.game_map.rect.bottom - 80),
+            (self.game_map.rect.left + 80, self.game_map.rect.bottom - 80),
+            (self.game_map.rect.centerx, self.game_map.rect.top + 80),
         ]
+
+        self.enemies = []
+        for i, (ex, ey) in enumerate(enemies_positions):
+            salt = int.from_bytes(os.urandom(4), 'little')
+            seed = (base + i * 1009 + salt) & 0xFFFFFFFF
+            if i < 2:
+                # RandomEnemy
+                self.enemies.append(RandomEnemy(ex, ey, self.game_map.rect, seed=seed))
+            else:
+                # AgentEnemy
+                self.enemies.append(AgentEnemy(ex, ey, self.game_map.rect, seed=seed))
         self.system_chaos_level = 0.0
 
         # Bomb system: encapsulates placement rules and bombs
         self.bomb_system = BombSystem()
         self.powerup_system = PowerUpSystem()
+        # Runtime system dynamics (stocks & flows)
+        self.dynamics = SistemaDinamicoRuntime()
         # Metrics system for logging and validation
         self.metrics = MetricsSystem(self.game_map.rect)
 
@@ -68,7 +73,8 @@ class GameLoop:
                     # Send player's raw position; BombSystem will align internally
                     now = pygame.time.get_ticks()
                     px, py = self.player.rect.x, self.player.rect.y
-                    self.bomb_system.try_place_bomb(now, (px, py))
+                    # The bomb system records the request internally and resolves it immediately.
+                    self.bomb_system.request_place_bomb(now, (px, py))
 
     def update(self, dt: int) -> None:
         """Advance game state by dt milliseconds."""
@@ -92,8 +98,15 @@ class GameLoop:
         bombs_active = len(self.bomb_system.bombs)
         explosions_active = sum(1 for b in self.bomb_system.bombs if b.is_exploding)
         enemies_count = len(self.enemies)
-        raw_chaos = enemies_count + bombs_active + explosions_active
-        self.system_chaos_level = min(10.0, raw_chaos)
+        powerups_count = len(self.powerup_system.powerups)
+
+        # Feed observed counts into the runtime dynamics and advance it
+        self.dynamics.enemigos = float(enemies_count)
+        self.dynamics.bombas = float(bombs_active)
+        self.dynamics.explosiones = float(explosions_active)
+        self.dynamics.powerups = float(powerups_count)
+        self.dynamics.step(dt)
+        self.system_chaos_level = min(10.0, self.dynamics.caos)
 
         # Update all enemies. Only AgentEnemy uses chaos and perception.
         for enemy in self.enemies:
@@ -139,6 +152,9 @@ class GameLoop:
             bombs_active,
             explosions_active
         )
+        self.metrics.sample_bomb_queue(tick, self.bomb_system.observe_queue())
+        # Optionally log dynamics snapshot
+        self.metrics.sample_dynamics(tick, self.dynamics.observe())
 
     def draw_ui(self) -> None:
         """Draw the player's lives as simple heart rectangles."""
@@ -184,7 +200,6 @@ class GameLoop:
 
     def resolve_collisions(self, rect: pygame.Rect, old_pos: tuple[int, int], can_pass_bombs: bool) -> None:
         """Resolve collisions against blocking objects (currently bombs only).
-
         If an entity's rect collides with a bomb that is currently blocking,
         reset its position to `old_pos`. Players can optionally pass bombs
         during the short grace period after placement by setting

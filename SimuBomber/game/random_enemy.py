@@ -28,14 +28,19 @@ class RandomEnemy(BaseEnemy):
     It does not perceive the player nor bombs, and ignores chaos.
     """
 
-    def __init__(self, x: int, y: int, bounds: pygame.Rect) -> None:
-        super().__init__(x, y, bounds)
+    def __init__(self, x: int, y: int, bounds: pygame.Rect, seed: int | None = None) -> None:
+        super().__init__(x, y, bounds, seed=seed)
 
-        semilla_base = (int(time.time() * 1000000) + id(self)) % (2**32 - 1)
-        if semilla_base == 0:
-            semilla_base = 1
+        # If a seed was provided via BaseEnemy, prefer it; otherwise fallback
+        # to the previous time-derived seed for non-reproducible runs.
+        if getattr(self, 'lcg', None) is None:
+            semilla_base = seed
+            if semilla_base is None:
+                semilla_base = (int(time.time() * 1000000) + id(self)) % (2**32 - 1)
+                if semilla_base == 0:
+                    semilla_base = 1
 
-        self.lcg = GeneradorCongruenciaLineal(semilla_base)
+            self.lcg = GeneradorCongruenciaLineal(semilla_base)
 
     def _choose_direction(self) -> None:
         """Choose a random valid direction using the course PRNG."""

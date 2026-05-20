@@ -24,7 +24,6 @@ from config import PLAYER_SIZE
 
 class MetricsSystem:
     """Collects logs and metrics for enemies and bombs.
-
     Usage:
     - instantiate once in `GameLoop` with the map rect
     - call `sample_frame(dt, enemies, bomb_counts)` once per frame
@@ -57,6 +56,10 @@ class MetricsSystem:
 
         # Global metric
         self.system_chaos_level = 0.0
+        # Dynamics snapshots (time-series of stocks/flows)
+        self.dynamics_logs: deque[dict] = deque(maxlen=5000)
+        # Internal bomb queue snapshots (observational only)
+        self.bomb_queue_logs: deque[dict] = deque(maxlen=5000)
 
     def _get_eid(self, enemy_obj: object) -> int:
         key = id(enemy_obj)
@@ -72,7 +75,6 @@ class MetricsSystem:
 
     def sample_frame(self, tick_time_ms: int, dt: int, enemies: Iterable[object], bombs_active: int, explosions_active: int) -> None:
         """Sample current frame: record enemy states and update metrics.
-
         Parameters:
         - tick_time_ms: current tick (ms)
         - dt: milliseconds elapsed since last frame
@@ -156,3 +158,17 @@ class MetricsSystem:
         self.transition_counts.clear()
         self.position_counts.clear()
         self.system_chaos_level = 0.0
+        self.dynamics_logs.clear()
+
+    def sample_dynamics(self, tick_time_ms: int, snapshot: dict) -> None:
+        """Record a small snapshot of the system dynamics for later analysis.
+
+        `snapshot` is expected to contain keys: enemigos, bombas, explosiones, powerups, caos, dificultad
+        """
+        entry = {"tick_ms": tick_time_ms, **snapshot}
+        self.dynamics_logs.append(entry)
+
+    def sample_bomb_queue(self, tick_time_ms: int, snapshot: dict) -> None:
+        """Record an internal snapshot of bomb request queue telemetry."""
+        entry = {"tick_ms": tick_time_ms, **snapshot}
+        self.bomb_queue_logs.append(entry)

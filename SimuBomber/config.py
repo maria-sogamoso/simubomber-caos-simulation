@@ -27,10 +27,13 @@ ENEMY_MOVE_INTERVAL = 30
 
 # Bomb configuration
 MAX_ACTIVE_BOMBS = 3
-BOMB_COOLDOWN_MS = 600
+BOMB_COOLDOWN_MS = 400
 BOMB_FUSE_MS = 2000
 EXPLOSION_DURATION_MS = 400
 EXPLOSION_RANGE = 2  # tiles in each direction
 BOMB_SIZE = 32
 BOMB_COLOR = (240, 200, 80)
 EXPLOSION_COLOR = (255, 140, 60)
+# Internal queue service time (ms) used only for observational modeling.
+# It is not exposed to the player and does not delay bomb placement.
+BOMB_QUEUE_SERVICE_MS = 250

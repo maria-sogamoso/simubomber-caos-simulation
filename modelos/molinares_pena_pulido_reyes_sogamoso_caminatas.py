@@ -8,13 +8,31 @@ import os
 import math
 import matplotlib.pyplot as plt
 import numpy as np
+import tempfile
+import atexit
+import shutil
 
 # Inyección de paths para poder importar desde la carpeta hermana sin romper el entorno
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from generadores_numeros_pseudoaleatorios.generador_numeros.congruencia_lineal import GeneradorCongruenciaLineal
 
+def _make_output_dir():
+    ephemeral = ('--ephemeral' in sys.argv) or (os.environ.get('SIMUBOMBER_EPHEMERAL_OUTPUTS') == '1')
+    if ephemeral:
+        tmp = tempfile.mkdtemp(prefix="simubomber_graficos_")
+        def _cleanup():
+            try:
+                shutil.rmtree(tmp)
+            except Exception:
+                pass
+        atexit.register(_cleanup)
+        return tmp
+    out = "graficos_validacion"
+    os.makedirs(out, exist_ok=True)
+    return out
+
 # Ruta de la carpeta donde se guardarán las gráficas generadas para el informe
-carpeta_destino = "graficos_validacion"
+carpeta_destino = _make_output_dir()
 
 # Direcciones legales de Bomberman: Derecha, Izquierda, Abajo, Arriba
 DIRECCIONES = [(1, 0), (-1, 0), (0, 1), (0, -1)]

@@ -26,6 +26,7 @@ from config import (
     WIDTH,
     HEIGHT,
 )
+from collections import deque
 
 
 class Bomb:
@@ -127,22 +128,88 @@ class BombSystem:
     def __init__(self) -> None:
         self.bombs: list[Bomb] = []
         self.last_place_time = 0
+        self._request_queue: deque[dict] = deque()
+        self._queue_event_log: deque[dict] = deque(maxlen=5000)
+        self._queue_sequence = 0
+        self._queue_arrivals = 0
+        self._queue_served = 0
+        self._queue_rejected = 0
+        self._queue_rejected_cooldown = 0
+        self._queue_rejected_capacity = 0
+        self._queue_total_wait_ms = 0
+        self._queue_max_depth = 0
         # derive map rect from config so system can clamp explosion areas
         self.map_rect = pygame.Rect(MAP_MARGIN, MAP_MARGIN, WIDTH - MAP_MARGIN * 2, HEIGHT - MAP_MARGIN * 2)
 
-    def try_place_bomb(self, current_time: int, position: tuple[int, int]) -> bool:
-        """Attempt to place a bomb; returns True if placed, False otherwise."""
+    def request_place_bomb(self, current_time: int, position: tuple[int, int]) -> bool:
+        """Record a bomb request in the internal queue and process it immediately.
+
+        The queue is observational: it exists for internal modeling and metrics,
+        but it does not delay or expose bomb placement to the player.
+        """
+        self._queue_sequence += 1
+        request = {
+            "request_id": self._queue_sequence,
+            "request_time": current_time,
+            "position": position,
+        }
+        self._request_queue.append(request)
+        self._queue_arrivals += 1
+        self._queue_max_depth = max(self._queue_max_depth, len(self._request_queue))
+        self._queue_event_log.append({
+            "tick_ms": current_time,
+            "event": "arrival",
+            "request_id": request["request_id"],
+            "queue_depth": len(self._request_queue),
+        })
+        return self._service_internal_queue(current_time)
+
+    def _service_internal_queue(self, current_time: int) -> bool:
+        serviced_any = False
+
+        while self._request_queue:
+            request = self._request_queue.popleft()
+            placed, reason = self._try_place_bomb(current_time, request["position"])
+            wait_ms = max(0, current_time - request["request_time"])
+
+            self._queue_event_log.append({
+                "tick_ms": current_time,
+                "event": "service" if placed else "rejection",
+                "request_id": request["request_id"],
+                "wait_ms": wait_ms,
+                "reason": reason,
+                "queue_depth": len(self._request_queue),
+            })
+
+            if placed:
+                self._queue_served += 1
+                self._queue_total_wait_ms += wait_ms
+                serviced_any = True
+            else:
+                self._queue_rejected += 1
+                if reason == "cooldown":
+                    self._queue_rejected_cooldown += 1
+                elif reason == "capacity":
+                    self._queue_rejected_capacity += 1
+
+        return serviced_any
+
+    def _try_place_bomb(self, current_time: int, position: tuple[int, int]) -> tuple[bool, str]:
+        """Attempt to place a bomb; returns `(placed, reason)`.
+
+        `reason` is `placed`, `cooldown`, or `capacity`.
+        """
         # position is expected to be the player's current coordinates (not grid-aligned)
         px, py = position
 
         # Enforce cooldown
         if current_time - self.last_place_time < BOMB_COOLDOWN_MS:
-            return False
+            return False, "cooldown"
 
         # Enforce active bombs limit
         active = sum(1 for b in self.bombs if b.is_active())
         if active >= MAX_ACTIVE_BOMBS:
-            return False
+            return False, "capacity"
 
         # Align to grid inside map bounds
         gx = ((px - self.map_rect.left) // PLAYER_SIZE) * PLAYER_SIZE + self.map_rect.left
@@ -157,7 +224,12 @@ class BombSystem:
         bomb.owner = "player"
         self.bombs.append(bomb)
         self.last_place_time = current_time
-        return True
+        return True, "placed"
+
+    def try_place_bomb(self, current_time: int, position: tuple[int, int]) -> bool:
+        """Backward-compatible immediate placement helper."""
+        placed, _ = self._try_place_bomb(current_time, position)
+        return placed
 
     def get_player_explosion_damage(self, player_rect: pygame.Rect) -> float:
         """
@@ -186,6 +258,22 @@ class BombSystem:
         for b in self.bombs:
             b.update(dt)
         self.bombs = [b for b in self.bombs if not b.should_remove()]
+        return
+
+    def observe_queue(self) -> dict:
+        """Return an internal snapshot of bomb request-queue telemetry."""
+        avg_wait = (self._queue_total_wait_ms / self._queue_served) if self._queue_served else 0.0
+        return {
+            "arrivals": self._queue_arrivals,
+            "served": self._queue_served,
+            "rejected": self._queue_rejected,
+            "rejected_cooldown": self._queue_rejected_cooldown,
+            "rejected_capacity": self._queue_rejected_capacity,
+            "current_depth": len(self._request_queue),
+            "max_depth": self._queue_max_depth,
+            "avg_wait_ms": avg_wait,
+            "event_count": len(self._queue_event_log),
+        }
 
     def draw(self, screen: pygame.Surface) -> None:
         for b in self.bombs:

@@ -1,0 +1,4 @@
+escenario,corridas,p_no_drop_teorica,p_health_teorica,p_speed_teorica,p_no_drop_observada,p_health_observada,p_speed_observada,error_no_drop_pct,error_health_pct,error_speed_pct
+Base SimuBomber,5000,0.65,0.2,0.15,0.6572,0.198,0.1448,0.7199999999999984,0.20000000000000018,0.5199999999999982
+Generoso,5000,0.5,0.3,0.2,0.5082,0.2986,0.1932,0.8199999999999985,0.14000000000000123,0.68
+Escaso,5000,0.8,0.12,0.08,0.8044,0.1148,0.0808,0.43999999999999595,0.5199999999999996,0.07999999999999952
