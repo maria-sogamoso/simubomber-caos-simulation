@@ -5,27 +5,14 @@ movement, valid-direction checks, and rendering. It intentionally
 contains no perception, state, or chaos logic so it can be reused by
 both purely-random and agent-driven enemy implementations.
 """
-
 from __future__ import annotations
 
 import random
 import pygame
-import os
-import time
-import sys
 from typing import List, Tuple
 
 from config import ENEMY_COLOR, ENEMY_SIZE, ENEMY_SPEED, ENEMY_MOVE_INTERVAL
 from utils.helpers import clamp
-
-# Lazy import of the project LCG when needed
-RAIZ_PROYECTO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-if RAIZ_PROYECTO not in sys.path:
-    sys.path.append(RAIZ_PROYECTO)
-try:
-    from generadores_numeros_pseudoaleatorios.generador_numeros.congruencia_lineal import GeneradorCongruenciaLineal
-except Exception:
-    GeneradorCongruenciaLineal = None
 
 # Movement helpers
 KEEP_DIRECTION_PROBABILITY = 0.6
@@ -50,7 +37,7 @@ class BaseEnemy:
     `_choose_direction()` when appropriate.
     """
 
-    def __init__(self, x: int, y: int, bounds: pygame.Rect, seed: int | None = None) -> None:
+    def __init__(self, x: int, y: int, bounds: pygame.Rect) -> None:
         self.rect = pygame.Rect(x, y, ENEMY_SIZE, ENEMY_SIZE)
         self.speed = ENEMY_SPEED
         self.bounds = bounds.copy()
@@ -61,14 +48,6 @@ class BaseEnemy:
 
         # Base values retained for subclasses that implement chaos
         self.base_move_interval = self.move_interval
-        # Optional project LCG for reproducible decisions; if seed is None
-        # behaviour falls back to Python's random (unchanged).
-        self.seed = seed
-        self.lcg = None
-        if seed is not None and GeneradorCongruenciaLineal is not None:
-            if seed == 0:
-                seed = 1
-            self.lcg = GeneradorCongruenciaLineal(seed)
 
     def _get_valid_directions(self) -> List[Tuple[int, int]]:
         """Return directions that keep the enemy inside map bounds."""
@@ -100,11 +79,7 @@ class BaseEnemy:
             return
 
         current_is_valid = self.direction in valid_directions
-        if self.lcg is not None:
-            ri = self.lcg.siguiente_Ri_Congruencia_Lineal(1)[0]
-            keep_current = current_is_valid and ri < KEEP_DIRECTION_PROBABILITY
-        else:
-            keep_current = current_is_valid and random.random() < KEEP_DIRECTION_PROBABILITY
+        keep_current = current_is_valid and random.random() < KEEP_DIRECTION_PROBABILITY
 
         if keep_current:
             return
@@ -113,12 +88,7 @@ class BaseEnemy:
         if not candidates:
             candidates = valid_directions
 
-        if self.lcg is not None:
-            ri2 = self.lcg.siguiente_Ri_Congruencia_Lineal(1)[0]
-            idx = int(ri2 * len(candidates))
-            self.direction = candidates[idx]
-        else:
-            self.direction = random.choice(candidates)
+        self.direction = random.choice(candidates)
 
     def update_movement(self) -> None:
         """Apply `direction` to the rect, clamped within `bounds`.
