@@ -20,6 +20,10 @@ from game.dynamics import SistemaDinamicoRuntime
 class GameLoop:
     """Encapsulates the main loop, update, and render cycle."""
 
+    STATE_PLAYING = "playing"
+    STATE_VICTORY = "victory"
+    STATE_DEFEAT = "defeat"
+
     def __init__(self, master_seed: int | None = None) -> None:
         pygame.init()
         pygame.display.set_caption(WINDOW_TITLE)
@@ -27,6 +31,7 @@ class GameLoop:
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         self.clock = pygame.time.Clock()
         self.running = True
+        self.state = self.STATE_PLAYING
 
         self.game_map = Map()
 
@@ -63,11 +68,17 @@ class GameLoop:
         # Metrics system for logging and validation
         self.metrics = MetricsSystem(self.game_map.rect)
 
+        self.title_font = pygame.font.Font(None, 72)
+        self.subtitle_font = pygame.font.Font(None, 34)
+
     def handle_events(self) -> None:
         """Process pygame events and detect quit requests."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+            elif self.state != self.STATE_PLAYING:
+                if event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE):
+                    self.running = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
                     # Send player's raw position; BombSystem will align internally
@@ -78,6 +89,9 @@ class GameLoop:
 
     def update(self, dt: int) -> None:
         """Advance game state by dt milliseconds."""
+        if self.state != self.STATE_PLAYING:
+            return
+
         # Player movement with collision resolution against bombs
         old_pos = self.player.rect.topleft
         self.player.update()
@@ -140,8 +154,7 @@ class GameLoop:
                 self.player.take_damage(1.0, pygame.time.get_ticks())
                 break
 
-        if self.player.lives <= 0:
-            self.running = False
+        self._update_game_state()
 
         # Sample metrics
         tick = pygame.time.get_ticks()
@@ -155,6 +168,13 @@ class GameLoop:
         self.metrics.sample_bomb_queue(tick, self.bomb_system.observe_queue())
         # Optionally log dynamics snapshot
         self.metrics.sample_dynamics(tick, self.dynamics.observe())
+
+    def _update_game_state(self) -> None:
+        """Resolve end conditions after each simulation step."""
+        if self.player.lives <= 0:
+            self.state = self.STATE_DEFEAT
+        elif not self.enemies:
+            self.state = self.STATE_VICTORY
 
     def draw_ui(self) -> None:
         """Draw the player's lives as simple heart rectangles."""
@@ -196,7 +216,36 @@ class GameLoop:
 
         self.draw_ui()
 
+        if self.state != self.STATE_PLAYING:
+            self._draw_end_screen()
+
         pygame.display.flip()
+
+    def _draw_end_screen(self) -> None:
+        """Render the victory/defeat overlay."""
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 170))
+        self.screen.blit(overlay, (0, 0))
+
+        if self.state == self.STATE_VICTORY:
+            title = "VICTORIA"
+            subtitle = "Super bien de pollo! , todos los enemigos derrotados"
+            accent = (70, 200, 120)
+        else:
+            title = "DERROTA"
+            subtitle = "Apague y vamonos , el jugador ha perdido todas sus vidas"
+            accent = (220, 70, 70)
+
+        title_surface = self.title_font.render(title, True, accent)
+        subtitle_surface = self.subtitle_font.render(subtitle, True, (240, 240, 240))
+        hint_surface = self.subtitle_font.render("Presione Esc, Enter, o Space para salir", True, (210, 210, 210))
+
+        center_x = WIDTH // 2
+        center_y = HEIGHT // 2
+
+        self.screen.blit(title_surface, title_surface.get_rect(center=(center_x, center_y - 50)))
+        self.screen.blit(subtitle_surface, subtitle_surface.get_rect(center=(center_x, center_y + 10)))
+        self.screen.blit(hint_surface, hint_surface.get_rect(center=(center_x, center_y + 55)))
 
     def resolve_collisions(self, rect: pygame.Rect, old_pos: tuple[int, int], can_pass_bombs: bool) -> None:
         """Resolve collisions against blocking objects (currently bombs only).
