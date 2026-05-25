@@ -1,276 +1,219 @@
-"""Simple random-moving enemy with state-based directional bias driven by custom LCG."""
-
+"""
+Enemy types for SimuBomber: Caos — uses movement.py for all collision.
+  Enemy     — L1 Zombie: pure LCG random-walk, never chases, never flees.
+  ImpEnemy  — L2 Imp:    fast, chases, flees explosions, erratic.
+  FireEnemy — L3 Dragon: 2 lives, chases, transforms on first hit (Flam form).
+"""
 from __future__ import annotations
-
-import math
-import sys
-import os
+import math, time, sys, os
 import pygame
+from config import (TILE_SIZE,
+                    ENEMY1_SPEED, ENEMY1_MOVE_INTERVAL,
+                    ENEMY2_SPEED, ENEMY2_MOVE_INTERVAL,
+                    ENEMY3_SPEED, ENEMY3_MOVE_INTERVAL)
+from assets_loader import get_enemy_frames
 
-from config import ENEMY_COLOR, ENEMY_MOVE_INTERVAL, ENEMY_SIZE, ENEMY_SPEED
-from utils.helpers import clamp
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..'))
+if _ROOT not in sys.path: sys.path.insert(0, _ROOT)
+try:
+    from generadores_numeros_pseudoaleatorios.generador_numeros.congruencia_lineal import GeneradorCongruenciaLineal
+    _HAS_LCG = True
+except ImportError:
+    _HAS_LCG = False
 
-# Ajuste dinámico de rutas para importar de forma limpia la librería de generadores desde el juego
-RAIZ_PROYECTO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-if RAIZ_PROYECTO not in sys.path:
-    sys.path.append(RAIZ_PROYECTO)
+DIRS = ((1,0),(-1,0),(0,1),(0,-1))
 
-from generadores_numeros_pseudoaleatorios.generador_numeros.congruencia_lineal import GeneradorCongruenciaLineal
+def _make_lcg():
+    seed = (int(time.time()*1_000_000)+id(object())) % (2**32-1) or 1
+    if _HAS_LCG: return GeneradorCongruenciaLineal(seed)
+    import random as _r
+    class _F:
+        def siguiente_Ri_Congruencia_Lineal(self,pasos=1): return [_r.random() for _ in range(pasos)]
+    return _F()
 
-KEEP_DIRECTION_PROBABILITY = 0.6
-
-ALLOWED_DIRECTIONS = (
-    (1, 0),
-    (-1, 0),
-    (0, 1),
-    (0, -1),
-)
+def _ri(lcg): return lcg.siguiente_Ri_Congruencia_Lineal(pasos=1)[0]
 
 
 class Enemy:
-    """Enemy with a discrete random walk and lightweight state-based biasing.
+    """Level-1 Zombie — PURE random-walk via LCG. Zero aggression."""
+    KEEP_DIR = 0.60
 
-    Driven by the custom Linear Congruential Generator (LCG) developed in the course.
-    """
-
-    def __init__(self, x: int, y: int, bounds: pygame.Rect) -> None:
-        self.rect = pygame.Rect(x, y, ENEMY_SIZE, ENEMY_SIZE)
-        self.speed = ENEMY_SPEED
-        self.bounds = bounds.copy()
-
-        self.move_interval = ENEMY_MOVE_INTERVAL
-        self.direction = (0, 0)
-        self.frame_counter = 0
-
-        # --- State system (simple, non-Markov explicit) ---
+    def __init__(self, x, y, bounds, enemy_id="enemy1",
+                 speed=ENEMY1_SPEED, move_interval=ENEMY1_MOVE_INTERVAL):
+        self.rect   = pygame.Rect(x, y, TILE_SIZE, TILE_SIZE)
+        self.speed  = speed; self.bounds = bounds.copy()
+        self.enemy_id = enemy_id; self.alive = True
+        self.move_interval = move_interval
+        self.base_move_interval = move_interval
+        self.direction = (1, 0); self.frame_counter = 0
+        self.lcg = _make_lcg()
+        # Never chases/flees
+        self.chase_threshold = 0; self.flee_threshold = 0
+        self.base_chase_th   = 0; self.bias_strength   = 0.0
         self.state = "wander"
+        self._idle = get_enemy_frames(enemy_id, "idle")
+        self._run  = get_enemy_frames(enemy_id, "run")
+        self._at=0; self._fi=0; self._asp=200; self._mov=False; self._flip=False
+        self._fb = (220, 100, 80)
 
-        # --- Perception values ---
-        self.dist_to_player = float("inf")
-        self.dist_to_threat = float("inf")
-        self.player_pos: tuple[int, int] | None = None
-        self.threat_pos: tuple[int, int] | None = None
+    # desired velocity for movement.py
+    def desired_delta(self):
+        return (self.direction[0]*self.speed, self.direction[1]*self.speed)
 
-        # --- Thresholds ---
-        self.chase_threshold = 150
-        self.flee_threshold = 100
+    def apply_chaos(self, chaos):
+        self.move_interval = max(6, int(self.base_move_interval - chaos*0.4))
 
-        # --- Chaos system (baseline values for recovery) ---
-        self.base_move_interval = self.move_interval
-        self.base_chase_threshold = self.chase_threshold
-        self.bias_strength = 0.0
+    def _choose_dir(self):
+        valid = [d for d in DIRS]   # all dirs — wall collision is handled by movement.py
+        keep = self.direction in valid and _ri(self.lcg) < self.KEEP_DIR
+        if keep: return
+        cands = [d for d in valid if d != self.direction] or valid
+        self.direction = cands[int(_ri(self.lcg)*len(cands))]
 
-        # # --- INTEGRACIÓN DEL GENERADOR PSEUDOALEATORIO (PRNG) ---
-        # # Inicializamos una semilla pseudo-única usando propiedades físicas/temporales iniciales de Python
-        # # para que cada enemigo tenga un patrón de caminata desincronizado y orgánico.
-        # import random as python_seed_bridge
-        # semilla_enemigo = python_seed_bridge.randint(1, 2**31 - 1)
-        # self.lcg = GeneradorCongruenciaLineal(semilla_enemigo)
-
-# --- INTEGRACIÓN DEL GENERADOR PSEUDOALEATORIO (PRNG) ---
-        import time
-        
-        # Usamos el reloj del sistema + la dirección de memoria del objeto (id) 
-        # para asegurar una semilla única por enemigo y evitar clonación de movimientos,
-        # sin tocar la librería 'random' nativa de Python.
-        semilla_base = (int(time.time() * 1000000) + id(self)) % (2**32 - 1)
-        
-        # Si por alguna razón da 0, la ajustamos a 1 (los LCG a veces fallan con semilla 0)
-        if semilla_base == 0:
-            semilla_base = 1
-            
-        self.lcg = GeneradorCongruenciaLineal(semilla_base)
-
-    # Movement utilities
-
-    def _get_valid_directions(self) -> list[tuple[int, int]]:
-        """Return directions that keep the enemy inside map bounds."""
-        valid_directions: list[tuple[int, int]] = []
-
-        for dx, dy in ALLOWED_DIRECTIONS:
-            next_x = clamp(
-                self.rect.x + dx * self.speed,
-                self.bounds.left,
-                self.bounds.right - self.rect.width,
-            )
-            next_y = clamp(
-                self.rect.y + dy * self.speed,
-                self.bounds.top,
-                self.bounds.bottom - self.rect.height,
-            )
-
-            if next_x == self.rect.x + dx * self.speed and next_y == self.rect.y + dy * self.speed:
-                valid_directions.append((dx, dy))
-
-        return valid_directions
-
-    # Chaos system
-
-    def apply_chaos(self, chaos: float) -> None:
-        """Adjust behavior based on system chaos level (0-10)."""
-        self.move_interval = max(4, int(self.base_move_interval - chaos * 0.5))
-        self.chase_threshold = self.base_chase_threshold + chaos * 8
-        self.bias_strength = min(0.8, chaos / 10.0)
-
-    # Perception
-
-    def perceive(self, player=None, bomb_system=None) -> None:
-        """Compute distances to player and threats (safe optional input)."""
-        self.dist_to_player = float("inf")
-        self.dist_to_threat = float("inf")
-        self.player_pos = None
-        self.threat_pos = None
-
-        if player is not None and hasattr(player, "rect"):
-            self.player_pos = (player.rect.centerx, player.rect.centery)
-            dx = self.player_pos[0] - self.rect.centerx
-            dy = self.player_pos[1] - self.rect.centery
-            self.dist_to_player = math.sqrt(dx * dx + dy * dy)
-
-        if bomb_system is not None:
-            bombs = getattr(bomb_system, "bombs", [])
-            for bomb in bombs:
-                if not hasattr(bomb, "rect"):
-                    continue
-
-                if getattr(bomb, "is_exploding", False):
-                    areas = []
-                    if hasattr(bomb, "get_explosion_rects_clamped"):
-                        map_rect = getattr(bomb_system, "map_rect", None)
-                        if map_rect is not None:
-                            areas = bomb.get_explosion_rects_clamped(map_rect)
-                    elif hasattr(bomb, "get_explosion_rects"):
-                        areas = bomb.get_explosion_rects()
-                    else:
-                        areas = [bomb.rect]
-
-                    for area in areas:
-                        dx = area.centerx - self.rect.centerx
-                        dy = area.centery - self.rect.centery
-                        distance = math.sqrt(dx * dx + dy * dy)
-                        if distance < self.dist_to_threat:
-                            self.dist_to_threat = distance
-                            self.threat_pos = (area.centerx, area.centery)
-                else:
-                    dx = bomb.rect.centerx - self.rect.centerx
-                    dy = bomb.rect.centery - self.rect.centery
-                    distance = math.sqrt(dx * dx + dy * dy)
-                    if distance < self.dist_to_threat:
-                        self.dist_to_threat = distance
-                        self.threat_pos = (bomb.rect.centerx, bomb.rect.centery)
-
-    # State decision
-
-    def decide_state(self) -> None:
-        """Select state based on simple distance thresholds."""
-        if self.threat_pos is not None and self.dist_to_threat < self.flee_threshold:
-            self.state = "flee"
-        elif self.player_pos is not None and self.dist_to_player < self.chase_threshold:
-            self.state = "chase"
-        else:
-            self.state = "wander"
-
-    # Direction biasing
-
-    def _bias_direction(self, target: tuple[int, int], flee: bool = False) -> None:
-        """Choose best grid direction towards or away from target."""
-        valid_directions = self._get_valid_directions()
-        if not valid_directions:
-            self.direction = (0, 0)
-            return
-
-        best_dir = None
-        best_score = None
-
-        for dx, dy in valid_directions:
-            next_x = self.rect.centerx + dx * self.speed
-            next_y = self.rect.centery + dy * self.speed
-            score = math.sqrt((target[0] - next_x) ** 2 + (target[1] - next_y) ** 2)
-
-            if best_score is None:
-                best_score = score
-                best_dir = (dx, dy)
-                continue
-
-            if flee:
-                if score > best_score:
-                    best_score = score
-                    best_dir = (dx, dy)
-            else:
-                if score < best_score:
-                    best_score = score
-                    best_dir = (dx, dy)
-
-        if best_dir is not None:
-            self.direction = best_dir
-
-    # Core movement INTEGRADO GENERADOR CONGRUENCIA LINEAL
-
-    def _choose_direction(self) -> None:
-        """Random walk base behavior (WANDER) usando el método de Congruencia Lineal."""
-        valid_directions = self._get_valid_directions()
-
-        if not valid_directions:
-            self.direction = (0, 0)
-            return
-
-        current_is_valid = self.direction in valid_directions
-        
-        # INTEGRACIÓN LCG: evaluamos la probabilidad de mantener dirección con tu generador
-        ri_mantener = self.lcg.siguiente_Ri_Congruencia_Lineal(pasos=1)[0]
-        keep_current = current_is_valid and ri_mantener < KEEP_DIRECTION_PROBABILITY
-
-        if keep_current:
-            return
-
-        candidates = [d for d in valid_directions if d != self.direction]
-        if not candidates:
-            candidates = valid_directions
-
-        # Mapeamos de forma uniforme el número [0, 1) al rango de índices de los candidatos legales
-        ri_seleccion = self.lcg.siguiente_Ri_Congruencia_Lineal(pasos=1)[0]
-        indice_candidato = int(ri_seleccion * len(candidates))
-        
-        self.direction = candidates[indice_candidato]
-
-    # Update loop
-    def update(self, player=None, bomb_system=None) -> None:
-        """Main update cycle driven by custom math parameters."""
+    def update(self, player=None, bomb_system=None, dt=16):
         self.frame_counter += 1
+        if self.frame_counter % self.move_interval == 1:
+            self._choose_dir()
+        dx, dy = self.desired_delta()
+        self._mov = bool(dx or dy)
+        if dx < 0: self._flip = True
+        elif dx > 0: self._flip = False
+        self._at += dt
+        if self._at >= self._asp:
+            self._at = 0
+            frames = self._run if self._mov else self._idle
+            if frames: self._fi = (self._fi+1) % len(frames)
 
-        self.perceive(player, bomb_system)
-        self.decide_state()
+    def draw(self, screen):
+        import config
+        frames = self._run if self._mov else self._idle
+        if frames:
+            surf = frames[self._fi % len(frames)]
+            sw,sh = surf.get_size()
+            sc = min(TILE_SIZE/sw, TILE_SIZE/sh)
+            nw,nh = int(sw*sc), int(sh*sc)
+            s = pygame.transform.scale(surf,(nw,nh))
+            if self._flip: s = pygame.transform.flip(s,True,False)
+            screen.blit(s,(self.rect.x+(TILE_SIZE-nw)//2,self.rect.y+(TILE_SIZE-nh)//2))
+        else:
+            pygame.draw.rect(screen, self._fb, self.rect)
+        if config.SHOW_HITBOXES:
+            from game.movement import hitbox_of
+            pygame.draw.rect(screen,(255,0,0),hitbox_of(self.rect),1)
+            pygame.draw.rect(screen,(255,140,0),self.rect,1)
+
+
+class ImpEnemy(Enemy):
+    """Level-2 Imp — fast, chases player, flees explosions."""
+    KEEP_DIR = 0.25
+
+    def __init__(self, x, y, bounds):
+        super().__init__(x, y, bounds, "enemy2", ENEMY2_SPEED, ENEMY2_MOVE_INTERVAL)
+        self.chase_threshold = 280; self.base_chase_th = 280
+        self.flee_threshold  = 90;  self.bias_strength  = 0.3
+        self._asp = 110; self._fb = (160, 50, 220)
+
+    def apply_chaos(self, chaos):
+        self.move_interval   = max(4, int(self.base_move_interval - chaos*0.7))
+        self.chase_threshold = self.base_chase_th + chaos*12
+        self.bias_strength   = min(0.92, chaos/10.0 + 0.3)
+
+    def _perceive(self, player, bomb_system):
+        self.dist_p = self.dist_t = float("inf")
+        self.pos_p  = self.pos_t  = None
+        if player:
+            px,py = player.rect.centerx, player.rect.centery
+            self.pos_p = (px,py)
+            self.dist_p = math.hypot(px-self.rect.centerx, py-self.rect.centery)
+        if bomb_system:
+            for b in bomb_system.bombs:
+                if getattr(b,"is_exploding",False):
+                    areas = b.get_explosion_rects_clamped(bomb_system.map_rect, bomb_system.game_map)
+                    for a in areas:
+                        d = math.hypot(a.centerx-self.rect.centerx, a.centery-self.rect.centery)
+                        if d < self.dist_t: self.dist_t=d; self.pos_t=(a.centerx,a.centery)
+                else:
+                    d = math.hypot(b.rect.centerx-self.rect.centerx, b.rect.centery-self.rect.centery)
+                    if d < self.dist_t: self.dist_t=d; self.pos_t=(b.rect.centerx,b.rect.centery)
+
+    def _best_dir(self, target, flee):
+        best,bs = DIRS[0],None
+        for dd in DIRS:
+            nx = self.rect.centerx+dd[0]*self.speed
+            ny = self.rect.centery+dd[1]*self.speed
+            sc = math.hypot(target[0]-nx,target[1]-ny)
+            if bs is None or (flee and sc>bs) or (not flee and sc<bs):
+                best,bs=dd,sc
+        return best
+
+    def update(self, player=None, bomb_system=None, dt=16):
+        self.frame_counter += 1
+        self._perceive(player, bomb_system)
+        if self.pos_t and self.dist_t < self.flee_threshold:
+            state = "flee"
+        elif self.pos_p and self.dist_p < self.chase_threshold:
+            state = "chase"
+        else:
+            state = "wander"
 
         if self.frame_counter % self.move_interval == 1:
-            # Caminata aleatoria base controlada por el LCG
-            self._choose_direction()
+            self._choose_dir()
+            if state=="chase" and self.pos_p and _ri(self.lcg)<self.bias_strength:
+                self.direction = self._best_dir(self.pos_p, flee=False)
+            elif state=="flee" and self.pos_t and _ri(self.lcg)<self.bias_strength:
+                self.direction = self._best_dir(self.pos_t, flee=True)
 
-            # INTEGRACIÓN LCG: El sesgo probabilístico por caos también usa tu generador matemático
-            if self.state == "chase" and self.player_pos is not None:
-                ri_caos = self.lcg.siguiente_Ri_Congruencia_Lineal(pasos=1)[0]
-                if ri_caos < self.bias_strength:
-                    self._bias_direction(self.player_pos, flee=False)
+        dx,dy = self.desired_delta()
+        self._mov = bool(dx or dy)
+        if dx<0: self._flip=True
+        elif dx>0: self._flip=False
+        self._at += dt
+        if self._at >= self._asp:
+            self._at=0
+            frames = self._run if self._mov else self._idle
+            if frames: self._fi=(self._fi+1)%len(frames)
 
-            elif self.state == "flee" and self.threat_pos is not None:
-                ri_caos = self.lcg.siguiente_Ri_Congruencia_Lineal(pasos=1)[0]
-                if ri_caos < self.bias_strength:
-                    self._bias_direction(self.threat_pos, flee=True)
 
-        dx = self.direction[0] * self.speed
-        dy = self.direction[1] * self.speed
+class FireEnemy(ImpEnemy):
+    """Level-3 Dragon — 2 lives; transforms to Flam form after first hit."""
+    def __init__(self, x, y, bounds):
+        super().__init__(x, y, bounds)
+        self.enemy_id        = "enemy3_normal"
+        self.speed           = ENEMY3_SPEED
+        self.base_move_interval = ENEMY3_MOVE_INTERVAL
+        self.move_interval      = ENEMY3_MOVE_INTERVAL
+        self.chase_threshold = 200; self.base_chase_th = 200
+        self._asp = 160
+        self.lives = 2; self.on_fire = False
+        self._idle = get_enemy_frames("enemy3_normal","idle")
+        self._run  = get_enemy_frames("enemy3_normal","run")
+        self._fire_idle = get_enemy_frames("enemy3_fire","idle")
+        self._fire_run  = get_enemy_frames("enemy3_fire","run")
+        self._fb    = (220,80,40)
+        self._glow  = pygame.Surface((TILE_SIZE,TILE_SIZE),pygame.SRCALPHA)
+        self._glow.fill((255,80,0,55))
 
-        self.rect.x = clamp(
-            self.rect.x + dx,
-            self.bounds.left,
-            self.bounds.right - self.rect.width,
-        )
-        self.rect.y = clamp(
-            self.rect.y + dy,
-            self.bounds.top,
-            self.bounds.bottom - self.rect.height,
-        )
+    def hit(self):
+        self.lives -= 1
+        if self.lives <= 0: self.alive=False; return True
+        self.on_fire = True; self.speed = ENEMY3_SPEED+2; self._fb=(255,160,30); return False
 
-    # Rendering
-    def draw(self, screen: pygame.Surface) -> None:
-        """Render enemy."""
-        pygame.draw.rect(screen, ENEMY_COLOR, self.rect)
+    def draw(self, screen):
+        import config
+        frames = (self._fire_run if self._mov else self._fire_idle) if self.on_fire \
+                 else (self._run if self._mov else self._idle)
+        if frames:
+            surf = frames[self._fi%len(frames)]
+            sw,sh = surf.get_size()
+            sc = min(TILE_SIZE/sw, TILE_SIZE/sh)
+            nw,nh = int(sw*sc),int(sh*sc)
+            s = pygame.transform.scale(surf,(nw,nh))
+            if self._flip: s=pygame.transform.flip(s,True,False)
+            screen.blit(s,(self.rect.x+(TILE_SIZE-nw)//2,self.rect.y+(TILE_SIZE-nh)//2))
+            if self.on_fire: screen.blit(self._glow,self.rect.topleft)
+        else:
+            pygame.draw.rect(screen,self._fb,self.rect)
+        if config.SHOW_HITBOXES:
+            from game.movement import hitbox_of
+            pygame.draw.rect(screen,(255,0,0),hitbox_of(self.rect),1)
+            pygame.draw.rect(screen,(255,140,0),self.rect,1)
