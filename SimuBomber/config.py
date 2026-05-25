@@ -1,36 +1,83 @@
-"""Global configuration values for the game."""
-
+"""Global configuration — SimuBomber: Caos."""
 import pygame
 pygame.init()
 _info = pygame.display.Info()
-WIDTH = int(_info.current_w * 0.95)
-HEIGHT = int(_info.current_h * 0.90)
-
+WIDTH  = min(1280, int(_info.current_w * 0.95))
+HEIGHT = min(800,  int(_info.current_h * 0.90))
 FPS = 60
-
 WINDOW_TITLE = "SimuBomber: Caos"
 
 BACKGROUND_COLOR = (18, 18, 24)
-MAP_COLOR = (44, 52, 66)
-MAP_BORDER_COLOR = (92, 105, 126)
-PLAYER_COLOR = (80, 190, 255)
-ENEMY_COLOR = (255, 104, 104)
+TILE_SIZE = 48
+BOMB_SIZE = 48
+MAP_COLS  = 15
+MAP_ROWS  = 11
 
-MAP_MARGIN = 48
+# Hitbox inner margin (pixels shrunk on each side)
+HB = 10   # entities use a (TILE_SIZE - 2*HB) x (TILE_SIZE - 2*HB) inner box
 
-PLAYER_SIZE = 32
-PLAYER_SPEED = 4
+CHARACTER_STATS = {
+    "char1": {"max_lives": 3, "speed": 3, "label": "Guerrero Élfico",
+              "desc": "Equilibrado — vidas y velocidad medias."},
+    "char2": {"max_lives": 5, "speed": 2, "label": "Gran Hechicera",
+              "desc": "Resistente — más vidas, pero más lento."},
+    "char3": {"max_lives": 2, "speed": 5, "label": "Lagarto Veloz",
+              "desc": "Ágil — muy veloz, pero pocas vidas."},
+}
+DEFAULT_CHARACTER = "char1"
 
-ENEMY_SIZE = 32
-ENEMY_SPEED = 2
-ENEMY_MOVE_INTERVAL = 30
+ENEMY1_SPEED = 2;  ENEMY1_MOVE_INTERVAL = 40
+ENEMY2_SPEED = 3;  ENEMY2_MOVE_INTERVAL = 18
+ENEMY3_SPEED = 2;  ENEMY3_MOVE_INTERVAL = 28
 
-# Bomb configuration
-MAX_ACTIVE_BOMBS = 3
-BOMB_COOLDOWN_MS = 600
-BOMB_FUSE_MS = 2000
-EXPLOSION_DURATION_MS = 400
-EXPLOSION_RANGE = 2  # tiles in each direction
-BOMB_SIZE = 32
-BOMB_COLOR = (240, 200, 80)
-EXPLOSION_COLOR = (255, 140, 60)
+MAX_ACTIVE_BOMBS      = 3
+BOMB_COOLDOWN_MS      = 500
+BOMB_FUSE_MS          = 2200
+EXPLOSION_DURATION_MS = 600
+EXPLOSION_RANGE       = 2
+
+LEVEL_MAPS = {
+    1:[
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,0,0,2,0,0,0,2,0,0,0,2,0,0,1],
+        [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
+        [1,0,0,0,0,2,0,0,0,2,0,0,0,0,1],
+        [1,2,1,0,1,0,1,2,1,0,1,0,1,2,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,2,1,0,1,0,1,2,1,0,1,0,1,2,1],
+        [1,0,0,0,0,2,0,0,0,2,0,0,0,0,1],
+        [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
+        [1,0,0,2,0,0,0,2,0,0,0,2,0,0,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    ],
+    2:[
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,0,0,2,0,2,0,0,0,2,0,2,0,0,1],
+        [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
+        [1,2,0,0,0,0,0,2,0,0,0,0,0,2,1],
+        [1,0,1,2,1,0,1,0,1,0,1,2,1,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,1,2,1,0,1,0,1,0,1,2,1,0,1],
+        [1,2,0,0,0,0,0,2,0,0,0,0,0,2,1],
+        [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
+        [1,0,0,2,0,2,0,0,0,2,0,2,0,0,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    ],
+    3:[
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,0,0,0,2,0,0,0,0,0,2,0,0,0,1],
+        [1,0,1,0,1,0,1,2,1,0,1,0,1,0,1],
+        [1,0,0,2,0,0,0,0,0,0,0,2,0,0,1],
+        [1,2,1,0,1,2,1,0,1,2,1,0,1,2,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,2,1,0,1,2,1,0,1,2,1,0,1,2,1],
+        [1,0,0,2,0,0,0,0,0,0,0,2,0,0,1],
+        [1,0,1,0,1,0,1,2,1,0,1,0,1,0,1],
+        [1,0,0,0,2,0,0,0,0,0,2,0,0,0,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    ],
+}
+TOTAL_LEVELS = 3
+
+# Global options (mutated at runtime by options menu)
+SHOW_HITBOXES = False
