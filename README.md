@@ -4,48 +4,80 @@ Juego de bombas tipo Bomberman con 3 niveles temáticos y 5 modelos de simulaci�
 
 ## Instalación
 
+```bash
 pip install -r requirements.txt
 cd SimuBomber
 python main.py
+```
 
 ## Controles
 
-Acción / Tecla
-Moverse / ↑ ↓ ← → o WASD
-Colocar bomba / ESPACIO
-Pausar o Salir / ESC
-Seleccionar / ENTER
+| Acción | Tecla |
+|---|---|
+| Moverse | ↑ ↓ ← → o WASD |
+| Colocar bomba | ESPACIO |
+| Pausar | ESC o P |
+| Confirmar menú | ENTER |
 
 ## Personajes
 
-Personaje | Vidas | Velocidad | Descripción
-
-Guerrero Élfico | 3 | 4 | Equilibrado
-Gran Hechicera | 5 | 2 | Más vidas, menos veloz
-Lagarto Veloz | 2 | 7 | Muy rápido, pocas vidas
+| Personaje | Vidas | Velocidad | Descripción |
+|---|---|---|---|
+| Guerrero Élfico | 3 | 3 | Equilibrado |
+| Gran Hechicera | 5 | 2 | Más vidas, menos veloz |
+| Lagarto Veloz | 2 | 5 | Muy rápido, pocas vidas |
 
 ## Niveles
 
-| Nivel | Escenario | Enemigos
-| 1 | Naturaleza/Prado | 3 Goblins (caminata aleatoria)
-| 2 | Cementerio | 3 Goblins + 2 Imps (más rápidos)
-| 3 | Mazmorra | 3 Goblins + 2 Imps + 2 Demonios de Fuego (2 vidas)
+| Nivel | Escenario | Enemigos |
+|---|---|---|
+| 1 - Naturaleza | Bosque Maldito | 3 Zombies (caminata aleatoria) |
+| 2 - Cementerio | Cementerio Oscuro | 3 Zombies + 2 Imps (persiguen/huyen) |
+| 3 - Mazmorra | Mazmorra del Dragón | 3 Zombies + 2 Imps + 2 Dragones de Fuego (2 vidas) |
 
 ## Poderes
 
-- **Rayo**: incrementa velocidad temporalmente
-- **Corazón completo**: recupera 1 vida entera
-- **Medio corazón**: recupera 0.5 de vida
+| Tipo | Efecto |
+|---|---|
+| Corazón completo | Recupera 1 vida |
+| Medio corazón | Recupera 0.5 de vida |
+| Velocidad | +3 velocidad por 4 segundos |
 
 ## Obstáculos
 
-- **Fijos** (paredes de piedra): no se destruyen con bombas
-- **Destructibles** (arbustos/cajas): desaparecen con la explosión
+- **Fijos** (paredes): no se destruyen, bloquean explosiones
+- **Rompibles** (arbustos/cajas): se destruyen con explosión pero la bloquean
 
 ## Modelos de Simulación
 
-1. **Caminatas Aleatorias** (LCG): movimiento de enemigos tipo goblin
-2. **Sistemas de Colas**: gestión de bombas activas (max 3)
-3. **Monte Carlo**: probabilidad de drop de power-ups al eliminar enemigos
-4. **Basado en Agentes**: estados flee/chase/wander por proximidad al jugador
-5. **Dinámica de Sistemas**: nivel de caos que afecta velocidad y comportamiento de enemigos
+| # | Modelo | Integración en el juego | Generador PRNG |
+|---|---|---|---|
+| 1 | **Caminatas Aleatorias** | Movimiento aleatorio de Zombies con probabilidad 0.6 de mantener dirección | Congruencia Lineal |
+| 2 | **Sistemas de Colas M/M/1** | Cola FIFO de solicitudes de bomba con métricas de llegadas, servicio y rechazos | Congruencia Lineal |
+| 3 | **Monte Carlo** | Drop de power-ups al eliminar enemigos (65% nada, 15% salud, 10% salud media, 10% velocidad) | Congruencia Lineal |
+| 4 | **Basado en Agentes** | Imps y Dragones con percepción, estados (wander/chase/flee) y bias direccional | Congruencia Lineal |
+| 5 | **Dinámica de Sistemas** | Stocks (enemigos, bombas, explosiones, powerups) → cálculo de caos 0-10 que ajusta comportamiento | Determinístico |
+
+## Estructura del Proyecto
+
+```
+SimuBomber/
+├── main.py                 # Punto de entrada con menú
+├── config.py               # Configuración global
+├── assets_loader.py        # Carga y cache de sprites/tiles/sonidos
+├── assets/                 # Sprites, tiles, sonidos, fuentes
+├── game/
+│   ├── game_loop.py        # Loop principal con 3 niveles
+│   ├── map.py              # Mapa tile-based
+│   ├── player.py           # Jugador con sprites animados
+│   ├── movement.py         # Movimiento grid-aligned con colisión
+│   ├── bomb.py             # Bombas con cola M/M/1 y explosión por rayos
+│   ├── enemy.py            # 3 tipos: Zombie, Imp, Dragon
+│   ├── powerup.py          # Power-ups con Monte Carlo
+│   ├── hud.py              # Interfaz de usuario
+│   ├── menu.py             # Menú principal y submenús
+│   ├── sounds.py           # Sistema de audio
+│   ├── dynamics.py         # Dinámica de sistemas (stocks & flows)
+│   └── metrics.py          # Métricas de simulación
+└── modelos/                # Módulos standalone para validación
+```
