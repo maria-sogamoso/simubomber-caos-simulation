@@ -86,7 +86,8 @@ class Player:
             nw, nh = int(sw*sc), int(sh*sc)
             s = pygame.transform.scale(surf, (nw, nh))
             if self._flip: s = pygame.transform.flip(s, True, False)
-            screen.blit(s, (self.rect.x+(TILE_SIZE-nw)//2, self.rect.y+(TILE_SIZE-nh)//2))
+            screen.blit(s, (self.rect.x+(TILE_SIZE-nw)//2,
+                            self.rect.y+(TILE_SIZE-nh)//2 + config.VISUAL_Y))
         else:
             pygame.draw.rect(screen, (80,190,255), self.rect)
         if config.SHOW_HITBOXES:

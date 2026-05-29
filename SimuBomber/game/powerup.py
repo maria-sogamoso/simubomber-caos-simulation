@@ -1,11 +1,29 @@
-"""Power-up system: speed (rayo), full-heart, half-heart — with sounds."""
+"""Power-up system: speed (rayo), full-heart, half-heart — with sounds and LCG."""
 from __future__ import annotations
-import random
+import os, sys, time
 import pygame
 from config import TILE_SIZE
 from assets_loader import get_sprite
 
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..'))
+if _ROOT not in sys.path: sys.path.insert(0, _ROOT)
+try:
+    from generadores_numeros_pseudoaleatorios.generador_numeros.congruencia_lineal import GeneradorCongruenciaLineal
+    _HAS_LCG = True
+except ImportError:
+    _HAS_LCG = False
+
 POWERUP_SIZE = 32
+
+
+def _make_lcg(seed=None):
+    if seed is None:
+        seed = (int(time.time()*1_000_000)+id(object())) % (2**32-1) or 1
+    if _HAS_LCG: return GeneradorCongruenciaLineal(seed)
+    import random as _r
+    class _F:
+        def siguiente_Ri_Congruencia_Lineal(self,pasos=1): return [_r.random() for _ in range(pasos)]
+    return _F()
 
 
 class PowerUp:
@@ -63,15 +81,32 @@ class PowerUp:
 
 
 class PowerUpSystem:
-    def __init__(self) -> None:
+    NO_DROP_PROBABILITY = 0.65
+    HEALTH_FULL_DROP_PROBABILITY = 0.15
+    HEALTH_HALF_DROP_PROBABILITY = 0.10
+    SPEED_DROP_PROBABILITY = 0.10
+
+    def __init__(self, seed: int | None = None) -> None:
         self.powerups: list[PowerUp] = []
+        self.lcg = _make_lcg(seed)
+
+    def _sample_drop_type(self) -> str | None:
+        """Sample a power-up outcome using the project PRNG."""
+        r = self.lcg.siguiente_Ri_Congruencia_Lineal(1)[0]
+        if r < self.NO_DROP_PROBABILITY:
+            return None
+        r2 = r - self.NO_DROP_PROBABILITY
+        if r2 < self.HEALTH_FULL_DROP_PROBABILITY:
+            return "health_full"
+        if r2 < self.HEALTH_FULL_DROP_PROBABILITY + self.HEALTH_HALF_DROP_PROBABILITY:
+            return "health_half"
+        return "speed"
 
     def spawn_from_enemy(self, pos: tuple[int,int]) -> None:
-        """Monte Carlo drop: 35% total chance, weighted types."""
-        r = random.random()
-        if r < 0.65:
+        """Monte Carlo drop using LCG."""
+        ptype = self._sample_drop_type()
+        if ptype is None:
             return
-        ptype = "health_full" if r < 0.80 else ("health_half" if r < 0.90 else "speed")
         cx, cy = pos
         self.powerups.append(PowerUp(cx - POWERUP_SIZE//2, cy - POWERUP_SIZE//2, ptype))
 

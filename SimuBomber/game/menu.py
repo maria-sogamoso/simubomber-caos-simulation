@@ -279,6 +279,18 @@ def run_main_menu(screen: pygame.Surface) -> str:
         f2 = 0.75 + 0.25 * math.sin(torch_ph * 2.9 + 1.2)
         _torch(screen, 55, 50, f1); _torch(screen, WIDTH - 55, 50, f2)
 
+        # Characters BEHIND the menu (drawn before menu panel)
+        CSCALE = 4
+        _draw_char_deco(screen, cframes["char1"], cidx["char1"],
+                        CHAR_C["char1"], CSCALE,
+                        100, 280, f_clabel, "Guerrera")
+        _draw_char_deco(screen, cframes["char2"], cidx["char2"],
+                        CHAR_C["char2"], CSCALE,
+                        WIDTH - 450, 280, f_clabel, "Hechicera")
+        _draw_char_deco(screen, cframes["char3"], cidx["char3"],
+                        CHAR_C["char3"], CSCALE,
+                        WIDTH - 300, 280, f_clabel, "Lagarto")
+
         # Title
         TW = 560
         _panel_main(screen, WIDTH//2 - TW//2, TITLE_Y, TW, TITLE_H,
@@ -309,20 +321,6 @@ def run_main_menu(screen: pygame.Surface) -> str:
         for i, (opt, r) in enumerate(zip(OPTS, btns)):
             _btn(screen, r.x, r.y, r.w, r.h, opt, f_opt, (i == sel), GOLD)
 
-        # Characters flanking the menu
-        CSCALE = 6
-        _draw_char_deco(screen, cframes["char1"], cidx["char1"],
-                        CHAR_C["char1"], CSCALE,
-                        MENU_X - 120, MENU_Y + 20, f_clabel, "Guerrero")
-        CSCALE2 = 5
-        right_x = MENU_X + BTN_W + 60
-        _draw_char_deco(screen, cframes["char2"], cidx["char2"],
-                        CHAR_C["char2"], CSCALE2,
-                        right_x, MENU_Y + 10, f_clabel, "Hechicera")
-        _draw_char_deco(screen, cframes["char3"], cidx["char3"],
-                        CHAR_C["char3"], CSCALE2,
-                        right_x + 90, MENU_Y + 10, f_clabel, "Lagarto")
-
         hint = f_hint.render("↑↓ navegar  ·  ENTER seleccionar", True, DIM)
         screen.blit(hint, (WIDTH//2 - hint.get_width()//2, HEIGHT - 22))
         pygame.display.flip()
@@ -333,9 +331,9 @@ def _draw_char_deco(screen, frames, idx, col, scale, x, y, font, label):
     surf = frames[idx % len(frames)]
     nw = surf.get_width() * scale; nh = surf.get_height() * scale
     scaled = pygame.transform.scale(surf, (nw, nh))
-    g = pygame.Surface((nw + 20, nh + 20), pygame.SRCALPHA)
-    pygame.draw.ellipse(g, (*col, 30), (0, nh//2, nw + 20, nh//2 + 10))
-    screen.blit(g, (x - 10, y - 4))
+    g = pygame.Surface((nw + 20, 15), pygame.SRCALPHA)
+    pygame.draw.ellipse(g, (*col, 30), (0, 0, nw + 20, 15))
+    screen.blit(g, (x - 10, y + nh - 8))
     screen.blit(scaled, (x, y))
     ls = font.render(label, True, col)
     screen.blit(ls, (x + nw//2 - ls.get_width()//2, y + nh + 4))

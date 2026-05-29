@@ -1,6 +1,7 @@
 """
 Main game loop — 3 levels, pause, transition, tile-snap movement,
 exact bomb placement, returns to menu on game over / victory.
+Integrates system dynamics and comprehensive metrics from feature-UI branch.
 """
 from __future__ import annotations
 import pygame
@@ -15,6 +16,7 @@ from game.enemy    import Enemy, ImpEnemy, FireEnemy
 from game.bomb     import BombSystem
 from game.powerup  import PowerUpSystem
 from game.metrics  import MetricsSystem
+from game.dynamics import SistemaDinamicoRuntime
 from game.hud      import draw_hud, draw_message
 from game.sounds   import play
 from game.movement import move_and_collide, hitbox_of
@@ -65,6 +67,8 @@ class GameLoop:
         self._hf = pygame.font.SysFont("Arial",16)
         # Track which bomb IDs have already hit which enemy IDs (prevents multi-hit)
         self._bomb_hit_log: dict[int, set[int]] = {}  # bomb_id -> set of enemy ids
+        # System dynamics engine
+        self.dynamics = SistemaDinamicoRuntime()
 
     def _load_level(self, level):
         self.game_map       = Map(level)
@@ -88,7 +92,7 @@ class GameLoop:
             if level>=2:
                 p=_find_free(gm,pc,pr)
                 if p: out.append(ImpEnemy(*p,mr))
-        for pc,pr in [(c//2,r//2),(c//2-2,r//2+1)]:
+        for pc,pr in [(c-2,1),(1,r-2)]:
             if level>=3:
                 p=_find_free(gm,pc,pr)
                 if p: out.append(FireEnemy(*p,mr))
@@ -148,10 +152,19 @@ class GameLoop:
         # Power-ups
         self.powerup_system.update(self.player, dt)
 
-        # Chaos
+        # Chaos calculation
         nb=sum(1 for b in self.bomb_system.bombs if b.is_active())
         ne=sum(1 for b in self.bomb_system.bombs if b.is_exploding)
-        self.chaos = min(10.0, len(self.enemies)+nb+ne)
+        enemies_count = len(self.enemies)
+        powerups_count = len(self.powerup_system.powerups)
+
+        # Feed observed counts into the runtime dynamics and advance it
+        self.dynamics.enemigos = float(enemies_count)
+        self.dynamics.bombas = float(nb)
+        self.dynamics.explosiones = float(ne)
+        self.dynamics.powerups = float(powerups_count)
+        self.dynamics.step(dt)
+        self.chaos = min(10.0, self.dynamics.caos)
 
         # Enemy movement
         all_e_rects = [e.rect for e in self.enemies]
@@ -187,8 +200,10 @@ class GameLoop:
                         surviving.append(en)
                     else:
                         self.powerup_system.spawn_from_enemy(en.rect.center)
+                        play("enemy_die.wav", 0.6)
                 else:
                     self.powerup_system.spawn_from_enemy(en.rect.center)
+                    play("enemy_die.wav", 0.6)
             else:
                 surviving.append(en)
         self.enemies = surviving
@@ -200,7 +215,10 @@ class GameLoop:
             if hitbox_of(en.rect).colliderect(player_hb):
                 self.player.take_damage(1.0,now); break
 
+        # Sample metrics
         self.metrics.sample_frame(now,dt,self.enemies,nb,ne)
+        self.metrics.sample_dynamics(now, self.dynamics.observe())
+        self.metrics.sample_bomb_queue(now, self.bomb_system.observe_queue())
 
         if self.player.lives<=0:
             self.state=self.ST_GAME_OVER; self._state_timer=0; play("game_over.wav",0.7)

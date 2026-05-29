@@ -1,8 +1,6 @@
-"""Utility helpers for SimuBomber."""
-
-from __future__ import annotations
+"""Utility helper functions."""
 
 
-def clamp(value: int | float, minimum: int | float, maximum: int | float) -> int | float:
-    """Return value clamped to [minimum, maximum]."""
-    return max(minimum, min(maximum, value))
+def clamp(value: int, minimum: int, maximum: int) -> int:
+    """Return value constrained to the inclusive [minimum, maximum] range."""
+    return max(minimum, min(value, maximum))

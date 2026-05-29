@@ -23,8 +23,8 @@ except ImportError:
 
 DIRS = ((1,0),(-1,0),(0,1),(0,-1))
 
-def _make_lcg():
-    seed = (int(time.time()*1_000_000)+id(object())) % (2**32-1) or 1
+def _make_lcg(obj):
+    seed = (int(time.time()*1_000_000) + id(obj)) % (2**32-1) or 1
     if _HAS_LCG: return GeneradorCongruenciaLineal(seed)
     import random as _r
     class _F:
@@ -46,7 +46,7 @@ class Enemy:
         self.move_interval = move_interval
         self.base_move_interval = move_interval
         self.direction = (1, 0); self.frame_counter = 0
-        self.lcg = _make_lcg()
+        self.lcg = _make_lcg(self)
         # Never chases/flees
         self.chase_threshold = 0; self.flee_threshold = 0
         self.base_chase_th   = 0; self.bias_strength   = 0.0
@@ -94,7 +94,8 @@ class Enemy:
             nw,nh = int(sw*sc), int(sh*sc)
             s = pygame.transform.scale(surf,(nw,nh))
             if self._flip: s = pygame.transform.flip(s,True,False)
-            screen.blit(s,(self.rect.x+(TILE_SIZE-nw)//2,self.rect.y+(TILE_SIZE-nh)//2))
+            screen.blit(s,(self.rect.x+(TILE_SIZE-nw)//2,
+                           self.rect.y+(TILE_SIZE-nh)//2 + config.VISUAL_Y))
         else:
             pygame.draw.rect(screen, self._fb, self.rect)
         if config.SHOW_HITBOXES:
@@ -209,7 +210,8 @@ class FireEnemy(ImpEnemy):
             nw,nh = int(sw*sc),int(sh*sc)
             s = pygame.transform.scale(surf,(nw,nh))
             if self._flip: s=pygame.transform.flip(s,True,False)
-            screen.blit(s,(self.rect.x+(TILE_SIZE-nw)//2,self.rect.y+(TILE_SIZE-nh)//2))
+            screen.blit(s,(self.rect.x+(TILE_SIZE-nw)//2,
+                           self.rect.y+(TILE_SIZE-nh)//2 + config.VISUAL_Y))
             if self.on_fire: screen.blit(self._glow,self.rect.topleft)
         else:
             pygame.draw.rect(screen,self._fb,self.rect)
