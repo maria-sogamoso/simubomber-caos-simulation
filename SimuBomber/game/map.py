@@ -50,7 +50,8 @@ class Map:
         surf = pygame.Surface((TS, TS)); surf.fill(fallback)
         tile = get_tile(level, name)
         if tile:
-            surf.blit(pygame.transform.scale(tile, (TS, TS)), (0, 0))
+            scaled = pygame.transform.smoothscale(tile, (TS, TS))
+            surf.blit(scaled, (0, 0))
         return surf
 
     def _build_wall(self, level, name, fallback, is_break):
@@ -58,7 +59,8 @@ class Map:
         surf = pygame.Surface((TS, TS)); surf.fill(self._theme["floor"])
         tile = get_tile(level, name)
         if tile:
-            surf.blit(pygame.transform.scale(tile, (TS, TS)), (0, 0))
+            scaled = pygame.transform.smoothscale(tile, (TS, TS))
+            surf.blit(scaled, (0, 0))
         else:
             surf.fill(fallback)
         if is_break:

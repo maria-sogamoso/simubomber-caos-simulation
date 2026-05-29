@@ -1,12 +1,11 @@
 """
 Grid-aligned movement — the single source of truth for all entity physics.
 
-Fixes vs previous version:
+Key guarantees:
 1. Snap is applied BEFORE collision so entities enter corridors naturally.
-2. Bomb collision uses the VISUAL rect (not hitbox) vs bomb rect so it
-   actually stops entities — the hitbox was too small to catch it reliably.
-3. Wall collision uses hitbox_of() so walls feel permissive (matches tile
-   corridors exactly).
+2. Collision is checked per-axis using the PREVIOUSLY resolved position
+   so entities cannot phase through walls or bombs on either axis.
+3. Bomb collision uses the VISUAL rect (not hitbox) to catch bombs reliably.
 """
 from __future__ import annotations
 import pygame
@@ -17,13 +16,14 @@ SNAP_MARGIN = 18   # activate snap within this many px of tile centre
 
 
 def hitbox_of(rect: pygame.Rect) -> pygame.Rect:
-    """Inner collision rect — used for wall & damage checks."""
-    return pygame.Rect(rect.x + HB, rect.y + HB,
-                       TILE_SIZE - HB * 2, TILE_SIZE - HB * 2)
+    """Centered inner collision rect — always in the middle of the entity."""
+    size = TILE_SIZE - HB * 2
+    return pygame.Rect(rect.centerx - size // 2, rect.centery - size // 2,
+                       size, size)
 
 
 def _snap(val: int, origin: int) -> int:
-    """Return nudge (−SNAP_SPEED…+SNAP_SPEED) toward the nearest tile centre."""
+    """Return nudge (-SNAP_SPEED..+SNAP_SPEED) toward the nearest tile centre."""
     offset = val - origin
     idx    = offset // TILE_SIZE
     centre = origin + idx * TILE_SIZE + TILE_SIZE // 2
@@ -51,14 +51,11 @@ def _wall_hit(rect: pygame.Rect, game_map) -> bool:
 def _bomb_hit(new_rect: pygame.Rect, old_rect: pygame.Rect,
               bomb_system) -> bool:
     """
-    True when new_rect would collide with a blocking bomb that
-    old_rect was NOT already touching (so it can exit freely).
-    Uses the VISUAL rect (not shrunken hitbox) to catch bombs reliably.
+    True when new_rect would collide with a bomb that old_rect was NOT
+    already touching (so it can exit freely).
+    ALL bombs block immediately — no grace period for anyone.
     """
-    now = pygame.time.get_ticks()
     for b in bomb_system.bombs:
-        if not b.is_blocking(now):
-            continue
         if old_rect.colliderect(b.rect):
             continue          # already inside → let it escape
         if new_rect.colliderect(b.rect):
@@ -73,9 +70,11 @@ def move_and_collide(entity, dx: int, dy: int,
       • Corridor-assist snap on the perpendicular axis
       • Axis-separated wall + bomb collision
       • Map-bounds clamp
+
+    Each axis is resolved independently using the position left by the
+    previous axis so entities cannot phase through obstacles diagonally.
     """
     mr  = game_map.rect
-    old = entity.rect.copy()
 
     # ── Snap assist (applied before movement so snap itself isn't blocked) ──
     if dx != 0 and dy == 0:
@@ -87,16 +86,18 @@ def move_and_collide(entity, dx: int, dy: int,
         entity.rect.x += nx
 
     # ── X axis ───────────────────────────────────────────────────────────────
+    old_x = entity.rect.x
     entity.rect.x += dx
     if _wall_hit(entity.rect, game_map) or \
-       _bomb_hit(entity.rect, old, bomb_system):
-        entity.rect.x = old.x
+       _bomb_hit(entity.rect, pygame.Rect(old_x, entity.rect.y, entity.rect.width, entity.rect.height), bomb_system):
+        entity.rect.x = old_x
 
     # ── Y axis ───────────────────────────────────────────────────────────────
+    old_y = entity.rect.y
     entity.rect.y += dy
     if _wall_hit(entity.rect, game_map) or \
-       _bomb_hit(entity.rect, old, bomb_system):
-        entity.rect.y = old.y
+       _bomb_hit(entity.rect, pygame.Rect(entity.rect.x, old_y, entity.rect.width, entity.rect.height), bomb_system):
+        entity.rect.y = old_y
 
     # ── Bounds clamp ─────────────────────────────────────────────────────────
     entity.rect.x = max(mr.left, min(entity.rect.x, mr.right  - TILE_SIZE))

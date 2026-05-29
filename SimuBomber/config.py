@@ -81,3 +81,6 @@ TOTAL_LEVELS = 3
 
 # Global options (mutated at runtime by options menu)
 SHOW_HITBOXES = False
+
+# Visual Y offset for sprites (compensates transparent padding in PNGs)
+VISUAL_Y = -6

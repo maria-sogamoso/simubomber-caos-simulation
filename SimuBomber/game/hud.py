@@ -40,12 +40,12 @@ def draw_hud(screen: pygame.Surface, player, level: int, bomb_system) -> None:
 
     # Bomb count
     active = sum(1 for b in bomb_system.bombs if b.is_active())
-    bsurf  = font_sm.render(f"💣 {active}/{3}", True, (200, 200, 200))
+    bsurf  = font_sm.render(f"Bomba: {active}/{3}", True, (200, 200, 200))
     screen.blit(bsurf, (screen.get_width() - bsurf.get_width() - 12, 12))
 
     # Speed boost indicator
     if getattr(player, "speed_boost_active", False):
-        ssurf = font_sm.render("⚡ VELOCIDAD", True, (80, 230, 80))
+        ssurf = font_sm.render("VELOCIDAD x2", True, (80, 230, 80))
         screen.blit(ssurf, (screen.get_width() - ssurf.get_width() - 12, 32))
 
 
