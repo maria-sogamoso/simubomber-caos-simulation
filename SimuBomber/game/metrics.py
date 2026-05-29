@@ -19,18 +19,17 @@ from typing import Iterable
 
 import pygame
 
-from config import PLAYER_SIZE
+from config import TILE_SIZE
 
 
 class MetricsSystem:
     """Collects logs and metrics for enemies and bombs.
-
     Usage:
     - instantiate once in `GameLoop` with the map rect
     - call `sample_frame(dt, enemies, bomb_counts)` once per frame
     """
 
-    def __init__(self, map_rect: pygame.Rect, grid_size: int = PLAYER_SIZE) -> None:
+    def __init__(self, map_rect: pygame.Rect, grid_size: int = TILE_SIZE) -> None:
         self.map_rect = map_rect.copy()
         self.grid_size = grid_size
 
@@ -57,6 +56,10 @@ class MetricsSystem:
 
         # Global metric
         self.system_chaos_level = 0.0
+        # Dynamics snapshots (time-series of stocks/flows)
+        self.dynamics_logs: deque[dict] = deque(maxlen=5000)
+        # Bomb queue telemetry snapshots
+        self.bomb_queue_logs: deque[dict] = deque(maxlen=5000)
 
     def _get_eid(self, enemy_obj: object) -> int:
         key = id(enemy_obj)
@@ -71,41 +74,28 @@ class MetricsSystem:
         return (int(col), int(row))
 
     def sample_frame(self, tick_time_ms: int, dt: int, enemies: Iterable[object], bombs_active: int, explosions_active: int) -> None:
-        """Sample current frame: record enemy states and update metrics.
-
-        Parameters:
-        - tick_time_ms: current tick (ms)
-        - dt: milliseconds elapsed since last frame
-        - enemies: iterable of enemy objects (expected to have `rect` and `direction`)
-        - bombs_active: integer count of bombs (active)
-        - explosions_active: integer count of currently exploding bombs
-        """
+        """Sample current frame: record enemy states and update metrics."""
         for e in enemies:
             if e is None:
                 continue
             eid = self._get_eid(e)
             st = self.per_enemy[eid]
 
-            # Initialize first seen time
             if st["first_seen_time"] is None:
                 st["first_seen_time"] = tick_time_ms
 
-            # Direction tracking
             prev = st["last_direction"]
             curr = getattr(e, "direction", (0, 0))
             changed = prev is not None and prev != curr
             if changed:
                 st["direction_changes"] += 1
                 self.transition_counts[prev][curr] += 1
-            # For first observation, do not count as change but record transition from None
             if prev is None:
-                # record initial transition from idle
                 self.transition_counts[(0, 0)][curr] += 1
 
             st["last_direction"] = curr
             st["frames_seen"] += 1
 
-            # Log entry
             log = {
                 "tick_ms": tick_time_ms,
                 "enemy_id": eid,
@@ -116,13 +106,10 @@ class MetricsSystem:
             }
             self.logs.append(log)
 
-            # Position distribution
             cell = self._pos_to_cell(e.rect.x, e.rect.y)
             self.position_counts[cell] += 1
 
-        # Update global metrics
         num_enemies = sum(1 for _ in filter(lambda x: x is not None, enemies))
-        # Simple chaos formula: enemies + 0.5*bombs + 1.5*explosions
         self.system_chaos_level = float(num_enemies) + 0.5 * float(bombs_active) + 1.5 * float(explosions_active)
 
     def get_enemy_stats(self, enemy_obj: object) -> dict:
@@ -156,3 +143,15 @@ class MetricsSystem:
         self.transition_counts.clear()
         self.position_counts.clear()
         self.system_chaos_level = 0.0
+        self.dynamics_logs.clear()
+        self.bomb_queue_logs.clear()
+
+    def sample_dynamics(self, tick_time_ms: int, snapshot: dict) -> None:
+        """Record a small snapshot of the system dynamics for later analysis."""
+        entry = {"tick_ms": tick_time_ms, **snapshot}
+        self.dynamics_logs.append(entry)
+
+    def sample_bomb_queue(self, tick_time_ms: int, snapshot: dict) -> None:
+        """Record an internal snapshot of bomb request-queue telemetry."""
+        entry = {"tick_ms": tick_time_ms, **snapshot}
+        self.bomb_queue_logs.append(entry)
