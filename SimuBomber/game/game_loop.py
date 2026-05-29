@@ -305,24 +305,59 @@ class GameLoop:
         self.screen.blit(sl,(WIDTH//2-sl.get_width()//2,HEIGHT//2+100))
 
     def _draw_victory(self):
-        ov=pygame.Surface((WIDTH,HEIGHT),pygame.SRCALPHA); ov.fill((0,0,0,175))
-        self.screen.blit(ov,(0,0))
-        fb=pygame.font.SysFont("Arial",36,bold=True); fm=pygame.font.SysFont("Arial",23)
-        fs=pygame.font.SysFont("Arial",17,italic=True)
-        lines=[
-            (fb,"¡El Dragón del Caos ha sido derrotado!",(100,255,120)),
-            (fm,"Pero la oscuridad no cesa…",(200,200,200)),
-            (fm,"Todo lo que hizo nuestro héroe fue en vano.",(200,200,200)),
-            (fm,"El mundo aún está repleto de demonios,",(200,200,200)),
-            (fm,"pero aún hay una última esperanza…",(200,200,200)),
-            (fb,"✨  Sarita the Sorceress  ✨",(255,150,230)),
+        # Transition: black overlay fades in over time
+        progress = min(1.0, self._state_timer / 1500)  # 1.5s fade
+        ov = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        ov.fill((0, 0, 0, int(255 * progress)))
+        self.screen.blit(ov, (0, 0))
+
+        if progress < 0.3:
+            return  # wait for background to darken
+
+        # Text alpha fades in after background
+        text_alpha = min(255, int(255 * (progress - 0.3) / 0.4))
+
+        fb = pygame.font.SysFont("Arial", 36, bold=True)
+        fm = pygame.font.SysFont("Arial", 23)
+        fs = pygame.font.SysFont("Arial", 17, italic=True)
+
+        lines = [
+            (fb, "¡El Dragón del Caos ha sido derrotado!", (100, 255, 120)),
+            (fm, "Pero la oscuridad no cesa…", (200, 200, 200)),
+            (fm, "Todo lo que hizo nuestro héroe fue en vano.", (200, 200, 200)),
+            (fm, "El mundo aún está repleto de demonios,", (200, 200, 200)),
+            (fm, "pero aún hay una última esperanza…", (200, 200, 200)),
         ]
-        th=sum(f.get_height()+8 for f,_,_ in lines); y=HEIGHT//2-th//2
-        for font,text,color in lines:
-            s=font.render(text,True,color); self.screen.blit(s,(WIDTH//2-s.get_width()//2,y))
-            y+=font.get_height()+8
-        hint=fs.render("ENTER / ESC — Volver al menú",True,(150,150,150))
-        self.screen.blit(hint,(WIDTH//2-hint.get_width()//2,HEIGHT-38))
+
+        y = 50  # start from top
+        for font, text, color in lines:
+            s = font.render(text, True, color)
+            s.set_alpha(text_alpha)
+            self.screen.blit(s, (WIDTH // 2 - s.get_width() // 2, y))
+            y += font.get_height() + 10
+
+        # Image fades in after text
+        img_alpha = min(255, int(255 * (progress - 0.6) / 0.4))
+        if img_alpha > 0:
+            try:
+                from assets_loader import get_sprite
+                sarita = get_sprite("sarita.png")
+                if sarita:
+                    sw, sh = sarita.get_size()
+                    max_w = WIDTH - 120
+                    max_h = HEIGHT - y - 70
+                    scale = min(max_w / sw, max_h / sh, 1.0)
+                    nw, nh = int(sw * scale), int(sh * scale)
+                    scaled = pygame.transform.smoothscale(sarita, (nw, nh))
+                    scaled.set_alpha(img_alpha)
+                    self.screen.blit(scaled, (WIDTH // 2 - nw // 2, y + 10))
+            except Exception:
+                pass
+
+        # Hint at bottom
+        hint = fs.render("ENTER / ESC — Volver al menú", True, (150, 150, 150))
+        hint.set_alpha(text_alpha)
+        self.screen.blit(hint, (WIDTH // 2 - hint.get_width() // 2, HEIGHT - 38))
 
     def run(self):
         while self.result is None:
