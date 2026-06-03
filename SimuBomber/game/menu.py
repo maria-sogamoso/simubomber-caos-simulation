@@ -197,31 +197,17 @@ def _stat_bar(screen, x, y, w, label, val, mx, color, font) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# MAIN MENU  (V7 — stone bg, antorchas, historia rotativa, personajes animados)
+# MAIN MENU  (V7 — stone bg, antorchas, personajes animados)
 # ═══════════════════════════════════════════════════════════════════════════════
 def run_main_menu(screen: pygame.Surface) -> str:
     clock = pygame.time.Clock()
     f_title = _pxfont(44)
     f_opt   = _pxfont(22)
-    f_story = _sf(17, italic=True)
     f_hint  = _sf(15)
     f_clabel = _sf(13)
 
     OPTS = ["Iniciar Juego", "Ver Personajes", "Controles", "Opciones", "Salir"]
     sel  = 0; tick = 0; torch_ph = 0.0
-
-    STORY_BLOCKS = [
-        ("El reino de Lumeria está en peligro.",
-         "Los demonios han invadido el bosque encantado.",
-         "¿Tendrás el valor de salvar el reino?"),
-        ("El Bosque Maldito guarda criaturas corrompidas.",
-         "El Cementerio Oscuro esconde sombras letales.",
-         "El Dragón del Caos aguarda en la mazmorra."),
-        ("Solo un héroe puede detener el caos.",
-         "Elige tu personaje y planta bombas.",
-         "El destino de Lumeria está en tus manos."),
-    ]
-    story_idx = 0; story_t = 0; STORY_MS = 4000
 
     char_ids = ["char1", "char2", "char3"]
     cframes = {c: get_char_frames(c, "idle") for c in char_ids}
@@ -229,17 +215,13 @@ def run_main_menu(screen: pygame.Surface) -> str:
     ctimer  = {c: 0 for c in char_ids}
 
     TITLE_Y = 18; TITLE_H = 90
-    STORY_Y = TITLE_Y + TITLE_H + 14; STORY_H = 78
     BTN_W = 300; BTN_H = 40; BTN_GAP = 10
     MENU_H = len(OPTS) * (BTN_H + BTN_GAP) - BTN_GAP + 28
-    MENU_Y = STORY_Y + STORY_H + 18
+    MENU_Y = TITLE_Y + TITLE_H + 30
     MENU_X = WIDTH // 2 - BTN_W // 2
 
     while True:
         dt = clock.tick(60); tick += dt; torch_ph += dt * 0.005
-        story_t += dt
-        if story_t >= STORY_MS:
-            story_t = 0; story_idx = (story_idx + 1) % len(STORY_BLOCKS)
 
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT: return "quit"
@@ -304,15 +286,6 @@ def run_main_menu(screen: pygame.Surface) -> str:
         screen.blit(t1,  (tx, ty))
         screen.blit(sep, (tx + t1.get_width() + 2, ty))
         screen.blit(t2,  (tx + t1.get_width() + sep.get_width() + 8, ty))
-
-        # Story block
-        _panel_main(screen, WIDTH//2 - 320, STORY_Y, 640, STORY_H,
-                    fill=(10, 6, 20, 240), border=(160, 130, 60))
-        fade = abs(math.sin(story_t / STORY_MS * math.pi))
-        for li, line in enumerate(STORY_BLOCKS[story_idx]):
-            lc = LGOLD if li == 0 else DIM
-            ls = f_story.render(line, True, lc); ls.set_alpha(int(255 * fade))
-            screen.blit(ls, (WIDTH//2 - ls.get_width()//2, STORY_Y + 8 + li * 22))
 
         # Menu options
         _panel_main(screen, MENU_X - 30, MENU_Y - 14, BTN_W + 60, MENU_H + 28,
@@ -576,11 +549,11 @@ def run_controls_screen(screen: pygame.Surface):
         ("Salir al menú",     "ESC (en pausa)"),
     ]
     STORY = [
-        "Los demonios han invadido el reino de Lumeria.",
-        "Nuestro héroe parte a limpiar el Bosque Maldito,",
-        "cruzar el Cementerio Oscuro y vencer al Dragón del Caos.",
-        "Solo sus bombas y su ingenio podrán salvar el reino.",
-        "Pero incluso si triunfa… ¿será suficiente?",
+        "El Algoritmo Ancestral define las reglas de Aeris.",
+        "La fractura del Núcleo de Caos desató el caos.",
+        "Los guardianes debieron mantener los nodos críticos.",
+        "El Guardián de Sellos es la última esperanza.",
+        "Recupera los fragmentos. Restaura el equilibrio.",
     ]
     f_t  = pygame.font.SysFont("Arial", 38, bold=True)
     f_l  = pygame.font.SysFont("Arial", 22)
@@ -614,7 +587,7 @@ def run_controls_screen(screen: pygame.Surface):
         # Story panel
         sy2 = py + ph + 22; pw2 = 540; ph2 = len(STORY) * 28 + 50; sx2 = WIDTH//2 - pw2//2
         _panel(screen, sx2, sy2, pw2, ph2, border=C_PINK)
-        sh_s = f_sh.render("Historia: El Caos de Lumeria", True, C_PINK)
+        sh_s = f_sh.render("Historia: El Mundo de Aeris", True, C_PINK)
         screen.blit(sh_s, (sx2 + pw2//2 - sh_s.get_width()//2, sy2 + 10))
         for i, line in enumerate(STORY):
             ls = f_st.render(line, True, C_DIM if i < 4 else C_PINK)

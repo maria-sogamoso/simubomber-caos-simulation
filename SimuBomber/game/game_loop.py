@@ -20,6 +20,7 @@ from game.dynamics import SistemaDinamicoRuntime
 from game.hud      import draw_hud, draw_message
 from game.sounds   import play
 from game.movement import move_and_collide, hitbox_of
+from game.story    import StoryPresenter, STORY_INTRO, STORY_TRANSITIONS, STORY_ENDING
 
 
 def _find_free(gm, pref_c, pref_r):
@@ -32,43 +33,25 @@ def _find_free(gm, pref_c, pref_r):
 
 
 class GameLoop:
+    ST_INTRO      = "intro"
     ST_PLAYING    = "playing"
     ST_PAUSED     = "paused"
-    ST_TRANSITION = "transition"
+    ST_STORY      = "story"
     ST_GAME_OVER  = "game_over"
     ST_VICTORY    = "victory"
-    TRANSITION_MS = 1800
     PAUSE_OPTS    = ["Continuar", "Reiniciar nivel", "Salir al menú"]
-
-    # Per-level story
-    STORY = {
-        1: {"title": "El Bosque Maldito",
-            "lines": ("Los demonios han invadido Lumeria.",
-                      "El bosque encantado ha sido corrompido.",
-                      "Elimina a los monstruos que lo habitan.")},
-        2: {"title": "El Cementerio Oscuro",
-            "lines": ("El bosque está limpio, pero el mal persiste.",
-                      "Sombras rápidas acechan entre las lápidas.",
-                      "No dejes que te atrapen en este lugar oscuro.")},
-        3: {"title": "La Mazmorra del Dragón",
-            "lines": ("El Dragón del Caos guarda el portal final.",
-                      "Tiene dos vidas — transforma en llamas al primer golpe.",
-                      "Derrótalo para sellar el portal para siempre.")},
-    }
 
     def __init__(self, screen, char_id="char1"):
         self.screen = screen; self.clock = pygame.time.Clock()
         self.char_id = char_id; self.current_level = 1
-        self._load_level(1)
-        self.state = self.ST_PLAYING; self._state_timer = 0
-        self._pause_sel = 0; self._trans_cap = None; self.result = None
+        self.state = self.ST_INTRO; self._state_timer = 0
+        self._pause_sel = 0; self.result = None
         self._pf = pygame.font.SysFont("Arial",32,bold=True)
         self._sf = pygame.font.SysFont("Arial",22)
         self._hf = pygame.font.SysFont("Arial",16)
-        # Track which bomb IDs have already hit which enemy IDs (prevents multi-hit)
-        self._bomb_hit_log: dict[int, set[int]] = {}  # bomb_id -> set of enemy ids
-        # System dynamics engine
+        self._bomb_hit_log: dict[int, set[int]] = {}
         self.dynamics = SistemaDinamicoRuntime()
+        self.story = StoryPresenter(screen, STORY_INTRO, char_id, "intro")
 
     def _load_level(self, level):
         self.game_map       = Map(level)
@@ -104,6 +87,15 @@ class GameLoop:
             if ev.type==pygame.KEYDOWN:
                 if   self.state==self.ST_PLAYING:   self._play_key(ev.key)
                 elif self.state==self.ST_PAUSED:     self._pause_key(ev.key)
+                elif self.state==self.ST_INTRO:
+                    self.story.handle_event(ev)
+                    if self.story.done:
+                        self._load_level(1)
+                        self.state=self.ST_PLAYING
+                elif self.state==self.ST_STORY:
+                    self.story.handle_event(ev)
+                    if self.story.done:
+                        self._advance_level()
                 elif self.state==self.ST_GAME_OVER:
                     if ev.key in (pygame.K_RETURN,pygame.K_SPACE,pygame.K_KP_ENTER): self.result="menu"
                 elif self.state==self.ST_VICTORY:
@@ -129,10 +121,19 @@ class GameLoop:
         elif s==2: self.result="menu"
 
     def update(self, dt):
+        if self.state == self.ST_INTRO:
+            self.story.update(dt)
+            if self.story.done:
+                self._load_level(1)
+                self.state = self.ST_PLAYING
+            return
+        if self.state == self.ST_STORY:
+            self.story.update(dt)
+            if self.story.done:
+                self._advance_level()
+            return
         if self.state != self.ST_PLAYING:
             self._state_timer += dt
-            if self.state==self.ST_TRANSITION and self._state_timer>=self.TRANSITION_MS:
-                self._advance_level()
             return
 
         # Player movement
@@ -226,8 +227,20 @@ class GameLoop:
             self._begin_transition()
 
     def _begin_transition(self):
-        self.state=self.ST_TRANSITION; self._state_timer=0
-        self._trans_cap=self.screen.copy(); play("level_clear.wav",0.75)
+        if self.current_level < TOTAL_LEVELS:
+            pages = STORY_TRANSITIONS.get(self.current_level, [])
+            story_type = "transition"
+        else:
+            pages = STORY_ENDING
+            story_type = "ending"
+        if not pages:
+            pages = [{"title": f"Nivel {self.current_level} Completado",
+                      "lines": ["Prepárate para el siguiente nivel."],
+                      "theme": (40, 40, 60)}]
+            story_type = "transition"
+        self.state = self.ST_STORY
+        self.story = StoryPresenter(self.screen, pages, self.char_id, story_type)
+        play("level_clear.wav", 0.75)
 
     def _advance_level(self):
         if self.current_level<TOTAL_LEVELS:
@@ -238,17 +251,22 @@ class GameLoop:
 
     def render(self):
         self.screen.fill(BACKGROUND_COLOR)
-        self.game_map.draw(self.screen)
-        self.powerup_system.draw(self.screen)
-        self.bomb_system.draw(self.screen)
-        for en in self.enemies: en.draw(self.screen)
-        self.player.draw(self.screen)
-        draw_hud(self.screen, self.player, self.current_level, self.bomb_system)
 
-        if   self.state==self.ST_PAUSED:     self._draw_pause()
-        elif self.state==self.ST_TRANSITION: self._draw_transition()
-        elif self.state==self.ST_GAME_OVER:  self._draw_game_over()
-        elif self.state==self.ST_VICTORY:    self._draw_victory()
+        if self.state == self.ST_INTRO:
+            self.story.draw()
+        elif self.state == self.ST_STORY:
+            self.story.draw()
+        else:
+            self.game_map.draw(self.screen)
+            self.powerup_system.draw(self.screen)
+            self.bomb_system.draw(self.screen)
+            for en in self.enemies: en.draw(self.screen)
+            self.player.draw(self.screen)
+            draw_hud(self.screen, self.player, self.current_level, self.bomb_system)
+
+            if   self.state==self.ST_PAUSED:     self._draw_pause()
+            elif self.state==self.ST_GAME_OVER:  self._draw_game_over()
+            elif self.state==self.ST_VICTORY:    self._draw_victory()
         pygame.display.flip()
 
     def _draw_pause(self):
@@ -259,11 +277,11 @@ class GameLoop:
         self.screen.blit(panel,(px,py)); pygame.draw.rect(self.screen,(90,110,200),(px,py,pw,ph),2)
         t=self._pf.render("PAUSA",True,(220,220,80))
         self.screen.blit(t,(WIDTH//2-t.get_width()//2,py+18))
-        # Story hint
-        story=self.STORY.get(self.current_level,{})
-        if story:
-            sl=self._hf.render(f"Nivel {self.current_level}: {story['title']}",True,(180,180,220))
-            self.screen.blit(sl,(WIDTH//2-sl.get_width()//2,py+60))
+        # Level hint
+        names={1:"El Bosque Maldito",2:"El Cementerio Oscuro",3:"La Mazmorra del Dragón"}
+        lv=names.get(self.current_level,f"Nivel {self.current_level}")
+        sl=self._hf.render(f"Nivel {self.current_level}: {lv}",True,(180,180,220))
+        self.screen.blit(sl,(WIDTH//2-sl.get_width()//2,py+60))
         for i,opt in enumerate(self.PAUSE_OPTS):
             sel=(i==self._pause_sel); c=(255,220,60) if sel else (175,175,195)
             s=self._sf.render(("▶ " if sel else "  ")+opt,True,c)
@@ -271,93 +289,76 @@ class GameLoop:
         h=self._hf.render("↑↓ navegar • ENTER confirmar • ESC/P reanudar",True,(110,110,135))
         self.screen.blit(h,(WIDTH//2-h.get_width()//2,py+ph-26))
 
-    def _draw_transition(self):
-        if self._trans_cap: self.screen.blit(self._trans_cap,(0,0))
-        prog=min(1.0,self._state_timer/self.TRANSITION_MS)
-        tints={1:(50,160,50),2:(50,90,50),3:(50,30,110)}
-        tint=tints.get(self.current_level,(70,70,70))
-        ov=pygame.Surface((WIDTH,HEIGHT),pygame.SRCALPHA); ov.fill((*tint,int(prog*215)))
-        self.screen.blit(ov,(0,0))
-        if prog>0.2:
-            alpha=int((prog-0.2)/0.8*255)
-            story=self.STORY.get(self.current_level,{})
-            f48=pygame.font.SysFont("Arial",48,bold=True)
-            s=f48.render(f"¡Nivel {self.current_level} Completado!",True,(255,255,110)); s.set_alpha(alpha)
-            self.screen.blit(s,(WIDTH//2-s.get_width()//2,HEIGHT//2-80))
-            if self.current_level<TOTAL_LEVELS:
-                next_s=self.STORY.get(self.current_level+1,{})
-                if next_s:
-                    f22=pygame.font.SysFont("Arial",24,bold=True)
-                    ns=f22.render(f"Siguiente: {next_s['title']}",True,(220,220,80)); ns.set_alpha(alpha)
-                    self.screen.blit(ns,(WIDTH//2-ns.get_width()//2,HEIGHT//2))
-                    f18=pygame.font.SysFont("Arial",18,italic=True)
-                    for i,line in enumerate(next_s.get('lines',())[:1]):
-                        nl=f18.render(line,True,(200,200,200)); nl.set_alpha(alpha)
-                        self.screen.blit(nl,(WIDTH//2-nl.get_width()//2,HEIGHT//2+36))
-
     def _draw_game_over(self):
         ov=pygame.Surface((WIDTH,HEIGHT),pygame.SRCALPHA); ov.fill((0,0,0,170))
         self.screen.blit(ov,(0,0)); draw_message(self.screen,"GAME OVER",(255,60,60))
         hint=self._sf.render("ENTER / ESPACIO — Volver al menú",True,(200,200,200))
         self.screen.blit(hint,(WIDTH//2-hint.get_width()//2,HEIGHT//2+65))
         f18=pygame.font.SysFont("Arial",18,italic=True)
-        sl=f18.render("El héroe ha caído… pero la esperanza no muere.",True,(180,140,140))
+        sl=f18.render("El Guardián ha caído… pero el Algoritmo persiste.",True,(180,140,140))
         self.screen.blit(sl,(WIDTH//2-sl.get_width()//2,HEIGHT//2+100))
 
     def _draw_victory(self):
-        # Transition: black overlay fades in over time
-        progress = min(1.0, self._state_timer / 1500)  # 1.5s fade
-        ov = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        ov.fill((0, 0, 0, int(255 * progress)))
-        self.screen.blit(ov, (0, 0))
+        import math
+        progress = min(1.0, self._state_timer / 1500)
+        alpha = int(255 * progress)
 
-        if progress < 0.3:
-            return  # wait for background to darken
+        # Themed background (emerald/green — equilibrium restored)
+        theme = (25, 55, 40)
+        for y_bg in range(0, HEIGHT, 3):
+            t = y_bg / HEIGHT
+            r = max(0, min(255, int(5 + theme[0] * 0.12 * t)))
+            g = max(0, min(255, int(3 + theme[1] * 0.12 * t)))
+            b = max(0, min(255, int(10 + theme[2] * 0.12 * t)))
+            c = (r, g, b)
+            pygame.draw.line(self.screen, c, (0, y_bg), (WIDTH, y_bg))
+            pygame.draw.line(self.screen, c, (0, y_bg + 1), (WIDTH, y_bg + 1))
+            pygame.draw.line(self.screen, c, (0, y_bg + 2), (WIDTH, y_bg + 2))
 
-        # Text alpha fades in after background
-        text_alpha = min(255, int(255 * (progress - 0.3) / 0.4))
+        if progress < 0.15:
+            return
 
-        fb = pygame.font.SysFont("Arial", 36, bold=True)
-        fm = pygame.font.SysFont("Arial", 23)
-        fs = pygame.font.SysFont("Arial", 17, italic=True)
+        text_alpha = min(255, int(255 * (progress - 0.15) / 0.4))
 
+        ft = pygame.font.SysFont("Arial", 40, bold=True)
+        fl = pygame.font.SysFont("Arial", 22)
+        fh = pygame.font.SysFont("Arial", 17, italic=True)
+
+        # Crystal
+        from game.story import _draw_crystal, _Particle
+        phase = self._state_timer * 0.003
+        _draw_crystal(self.screen, WIDTH // 2, 95, 28, phase, theme)
+
+        # Title
+        ts = ft.render("EQUILIBRIO RESTAURADO", True, (255, 230, 100))
+        ts.set_alpha(text_alpha)
+        self.screen.blit(ts, (WIDTH // 2 - ts.get_width() // 2, 140))
+
+        # Underline
+        uw = ts.get_width() + 40
+        us = pygame.Surface((uw, 2), pygame.SRCALPHA)
+        us.fill((255, 230, 100, int(text_alpha * 0.4)))
+        self.screen.blit(us, (WIDTH // 2 - uw // 2, 190))
+
+        # Lines
         lines = [
-            (fb, "¡El Dragón del Caos ha sido derrotado!", (100, 255, 120)),
-            (fm, "Pero la oscuridad no cesa…", (200, 200, 200)),
-            (fm, "Todo lo que hizo nuestro héroe fue en vano.", (200, 200, 200)),
-            (fm, "El mundo aún está repleto de demonios,", (200, 200, 200)),
-            (fm, "pero aún hay una última esperanza…", (200, 200, 200)),
+            "El Algoritmo Ancestral vibrate a regular",
+            "las probabilidades de Aeris.",
+            "El último Guardián de Sellos cumplió su misión.",
+            "Los caminos se restauran.",
         ]
+        y0 = 220
+        for i, txt in enumerate(lines):
+            col = (220, 220, 235) if i > 0 else (255, 240, 180)
+            ls = fl.render(txt, True, col)
+            ls.set_alpha(text_alpha)
+            self.screen.blit(ls, (WIDTH // 2 - ls.get_width() // 2, y0 + i * 36))
 
-        y = 50  # start from top
-        for font, text, color in lines:
-            s = font.render(text, True, color)
-            s.set_alpha(text_alpha)
-            self.screen.blit(s, (WIDTH // 2 - s.get_width() // 2, y))
-            y += font.get_height() + 10
-
-        # Image fades in after text
-        img_alpha = min(255, int(255 * (progress - 0.6) / 0.4))
-        if img_alpha > 0:
-            try:
-                from assets_loader import get_sprite
-                sarita = get_sprite("sarita.png")
-                if sarita:
-                    sw, sh = sarita.get_size()
-                    max_w = WIDTH - 120
-                    max_h = HEIGHT - y - 70
-                    scale = min(max_w / sw, max_h / sh, 1.0)
-                    nw, nh = int(sw * scale), int(sh * scale)
-                    scaled = pygame.transform.smoothscale(sarita, (nw, nh))
-                    scaled.set_alpha(img_alpha)
-                    self.screen.blit(scaled, (WIDTH // 2 - nw // 2, y + 10))
-            except Exception:
-                pass
-
-        # Hint at bottom
-        hint = fs.render("ENTER / ESC — Volver al menú", True, (150, 150, 150))
-        hint.set_alpha(text_alpha)
-        self.screen.blit(hint, (WIDTH // 2 - hint.get_width() // 2, HEIGHT - 38))
+        # Hint
+        ha = int(160 + 60 * math.sin(self._state_timer * 0.004))
+        h = fh.render("ENTER / ESC — Volver al menú", True, (160, 160, 180))
+        h.set_alpha(ha)
+        self.screen.blit(h, (WIDTH // 2 - h.get_width() // 2, HEIGHT - 45))
 
     def run(self):
         while self.result is None:
