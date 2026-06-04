@@ -115,7 +115,7 @@ class SistemaDinamicoBomber:
 		explosiones_next = max(0.0, explosiones + bomb_detonation - explosion_decay)
 		powerups_next = max(0.0, powerups + powerup_drop - powerup_use)
 
-		caos_target = 0.45 * enemigos_next + 0.30 * bombas_next + 0.25 * explosiones_next
+		caos_target = 0.50 * enemigos_next + 1.20 * bombas_next + 1.50 * explosiones_next
 		caos_next = self._clamp(0.62 * caos + 0.38 * caos_target - 0.20 * powerups_next, 0.0, 10.0)
 		dificultad_next = self._clamp(1.0 + 0.55 * caos_next, 1.0, 10.0)
 
@@ -135,7 +135,7 @@ class SistemaDinamicoBomber:
 			"explosiones": self.escenario.explosiones_iniciales,
 			"powerups": self.escenario.powerups_iniciales,
 			"caos": self._clamp(
-				0.45 * self.escenario.enemigos_iniciales + 0.30 * self.escenario.bombas_iniciales + 0.25 * self.escenario.explosiones_iniciales,
+				0.50 * self.escenario.enemigos_iniciales + 1.20 * self.escenario.bombas_iniciales + 1.50 * self.escenario.explosiones_iniciales,
 				0.0,
 				10.0,
 			),
@@ -199,7 +199,7 @@ def teorico_deterministico(escenario: EscenarioDinamico, pasos: int) -> list[dic
 		"bombas": escenario.bombas_iniciales,
 		"explosiones": escenario.explosiones_iniciales,
 		"powerups": escenario.powerups_iniciales,
-		"caos": max(0.0, 0.45 * escenario.enemigos_iniciales + 0.30 * escenario.bombas_iniciales + 0.25 * escenario.explosiones_iniciales),
+		"caos": max(0.0, 0.50 * escenario.enemigos_iniciales + 1.20 * escenario.bombas_iniciales + 1.50 * escenario.explosiones_iniciales),
 		"dificultad": 1.0,
 	}
 	secuencia = []
@@ -222,7 +222,7 @@ def teorico_deterministico(escenario: EscenarioDinamico, pasos: int) -> list[dic
 			"explosiones": max(0.0, state["explosiones"] + bomb_detonation - explosion_decay),
 			"powerups": max(0.0, state["powerups"] + powerup_drop - powerup_use),
 		}
-		caos_target = 0.45 * state["enemigos"] + 0.30 * state["bombas"] + 0.25 * state["explosiones"]
+		caos_target = 0.50 * state["enemigos"] + 1.20 * state["bombas"] + 1.50 * state["explosiones"]
 		state["caos"] = max(0.0, min(10.0, 0.62 * caos_actual + 0.38 * caos_target - 0.20 * state["powerups"]))
 		state["dificultad"] = max(1.0, min(10.0, 1.0 + 0.55 * state["caos"]))
 		secuencia.append({"t": t, **state})
