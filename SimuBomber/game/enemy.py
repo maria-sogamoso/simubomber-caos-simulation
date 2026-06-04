@@ -60,8 +60,10 @@ class Enemy:
     def desired_delta(self):
         return (self.direction[0]*self.speed, self.direction[1]*self.speed)
 
-    def apply_chaos(self, chaos):
+    def apply_chaos(self, chaos, difficulty=1.0):
         self.move_interval = max(6, int(self.base_move_interval - chaos*0.4))
+        # Difficulty scales enemy speed (positive feedback loop)
+        self.speed = max(1, int(ENEMY1_SPEED * (1.0 + 0.06 * (difficulty - 1.0))))
 
     def _choose_dir(self):
         valid = [d for d in DIRS]   # all dirs — wall collision is handled by movement.py
@@ -114,10 +116,12 @@ class ImpEnemy(Enemy):
         self.flee_threshold  = 90;  self.bias_strength  = 0.3
         self._asp = 110; self._fb = (160, 50, 220)
 
-    def apply_chaos(self, chaos):
+    def apply_chaos(self, chaos, difficulty=1.0):
         self.move_interval   = max(4, int(self.base_move_interval - chaos*0.7))
-        self.chase_threshold = self.base_chase_th + chaos*12
-        self.bias_strength   = min(0.92, chaos/10.0 + 0.3)
+        self.chase_threshold = self.base_chase_th + chaos*12 + difficulty*8
+        self.bias_strength   = min(0.92, chaos/10.0 + 0.3 + 0.02 * difficulty)
+        # Difficulty scales imp speed and aggression
+        self.speed = max(1, int(ENEMY2_SPEED * (1.0 + 0.08 * (difficulty - 1.0))))
 
     def _perceive(self, player, bomb_system):
         self.dist_p = self.dist_t = float("inf")

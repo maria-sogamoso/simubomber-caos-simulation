@@ -42,6 +42,9 @@ class GameLoop:
     ST_VICTORY    = "victory"
     PAUSE_OPTS    = ["Continuar", "Reiniciar nivel", "Salir al menú"]
 
+    # Max enemies allowed per level (dynamic spawn cap)
+    _MAX_ENEMIES = {1: 6, 2: 8, 3: 10}
+
     def __init__(self, screen, char_id="char1"):
         self.screen = screen; self.clock = pygame.time.Clock()
         self.char_id = char_id; self.current_level = 1
@@ -54,6 +57,7 @@ class GameLoop:
         self.dynamics = SistemaDinamicoRuntime()
         self.story = StoryPresenter(screen, STORY_INTRO, char_id, "intro")
         self._mission_fade = 255
+        self._spawn_accumulator = 0.0  # fractional enemy spawn budget
 
     def _load_level(self, level):
         self.game_map       = Map(level)
@@ -67,6 +71,7 @@ class GameLoop:
         self.chaos          = 0.0
         self._bomb_hit_log  = {}
         self._mission_fade = 255
+        self._spawn_accumulator = 0.0
         music.switch(f"level{level}")
 
     def _spawn_enemies(self, level, mr):
@@ -84,6 +89,30 @@ class GameLoop:
                 p=_find_free(gm,pc,pr)
                 if p: out.append(FireEnemy(*p,mr))
         return out
+
+    def _try_spawn_enemy(self):
+        import random
+        gm = self.game_map; c, r = gm.cols, gm.rows
+        mr = gm.rect
+        corners = [(c-2, r-2), (1, r-2), (c-2, 1), (1, 1), (c//2, r-2), (c-2, r//2)]
+        pc, pr = random.choice(corners)
+        
+        p = _find_free(gm, pc, pr)
+        if not p: return
+
+        if self.current_level == 1:
+            en = Enemy(*p, mr, "enemy1", ENEMY1_SPEED, ENEMY1_MOVE_INTERVAL)
+        elif self.current_level == 2:
+            en = ImpEnemy(*p, mr) if random.random() < 0.5 else Enemy(*p, mr, "enemy1", ENEMY1_SPEED, ENEMY1_MOVE_INTERVAL)
+        else:
+            rand = random.random()
+            if rand < 0.4: en = ImpEnemy(*p, mr)
+            elif rand < 0.7: en = FireEnemy(*p, mr)
+            else: en = Enemy(*p, mr, "enemy1", ENEMY1_SPEED, ENEMY1_MOVE_INTERVAL)
+            
+        en.apply_chaos(self.chaos, self.dynamics.get_difficulty())
+        self.enemies.append(en)
+
 
     def handle_events(self):
         for ev in pygame.event.get():
@@ -157,27 +186,44 @@ class GameLoop:
         active_bomb_ids = {id(b) for b in self.bomb_system.bombs}
         self._bomb_hit_log = {k:v for k,v in self._bomb_hit_log.items() if k in active_bomb_ids}
 
-        # Power-ups
-        self.powerup_system.update(self.player, dt)
+        # Power-ups (returns count consumed for negative feedback)
+        consumed = self.powerup_system.update(self.player, dt)
 
-        # Chaos calculation
+        # ── System Dynamics integration ────────────────────────────────
         nb=sum(1 for b in self.bomb_system.bombs if b.is_active())
         ne=sum(1 for b in self.bomb_system.bombs if b.is_exploding)
         enemies_count = len(self.enemies)
         powerups_count = len(self.powerup_system.powerups)
 
-        # Feed observed counts into the runtime dynamics and advance it
-        self.dynamics.enemigos = float(enemies_count)
-        self.dynamics.bombas = float(nb)
-        self.dynamics.explosiones = float(ne)
-        self.dynamics.powerups = float(powerups_count)
+        # Blend observed game counts with model predictions (keeps
+        # feedback loops alive instead of overwriting stocks)
+        self.dynamics.sync_observed(
+            enemigos=float(enemies_count),
+            bombas=float(nb),
+            explosiones=float(ne),
+            powerups=float(powerups_count),
+        )
         self.dynamics.step(dt)
         self.chaos = min(10.0, self.dynamics.caos)
+        difficulty = self.dynamics.get_difficulty()
 
-        # Enemy movement
+        # Negative feedback: collecting power-ups reduces chaos
+        if consumed > 0:
+            self.dynamics.reduce_chaos(0.5 * consumed)
+
+        # ── Dynamic enemy spawning (positive feedback loop) ───────────
+        max_enemies = self._MAX_ENEMIES.get(self.current_level, 6)
+        if enemies_count < max_enemies:
+            spawn_rate = self.dynamics.get_spawn_rate()
+            self._spawn_accumulator += spawn_rate * (dt / 1000.0)
+            while self._spawn_accumulator >= 1.0 and len(self.enemies) < max_enemies:
+                self._spawn_accumulator -= 1.0
+                self._try_spawn_enemy()
+
+        # Enemy movement — pass both chaos AND difficulty
         all_e_rects = [e.rect for e in self.enemies]
         for en in self.enemies:
-            en.apply_chaos(self.chaos)
+            en.apply_chaos(self.chaos, difficulty)
             dx_e, dy_e = en.desired_delta()
             move_and_collide(en, dx_e, dy_e, self.game_map, self.bomb_system)
             en.update(self.player, self.bomb_system, dt)
@@ -270,7 +316,8 @@ class GameLoop:
             self.bomb_system.draw(self.screen)
             for en in self.enemies: en.draw(self.screen)
             self.player.draw(self.screen)
-            draw_hud(self.screen, self.player, self.current_level, self.bomb_system)
+            draw_hud(self.screen, self.player, self.current_level, self.bomb_system,
+                     chaos=self.chaos, difficulty=self.dynamics.get_difficulty())
 
             if   self.state==self.ST_PAUSED:     self._draw_pause()
             elif self.state==self.ST_GAME_OVER:  self._draw_game_over()
