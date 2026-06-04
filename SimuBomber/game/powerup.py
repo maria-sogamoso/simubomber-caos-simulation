@@ -110,13 +110,17 @@ class PowerUpSystem:
         cx, cy = pos
         self.powerups.append(PowerUp(cx - POWERUP_SIZE//2, cy - POWERUP_SIZE//2, ptype))
 
-    def update(self, player, dt: int = 16) -> None:
+    def update(self, player, dt: int = 16) -> int:
+        """Update power-ups and return count of power-ups consumed this frame."""
         now = pygame.time.get_ticks()
+        consumed = 0
         for pu in self.powerups:
             pu.update(dt)
             if pu.active and pu.rect.colliderect(player.rect):
                 pu.apply(player, now)
+                consumed += 1
         self.powerups = [pu for pu in self.powerups if pu.active]
+        return consumed
 
     def draw(self, screen: pygame.Surface) -> None:
         for pu in self.powerups:
