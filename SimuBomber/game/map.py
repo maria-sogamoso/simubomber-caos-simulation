@@ -40,28 +40,50 @@ class Map:
 
         self._fl  = self._build_floor(level, "floor",          th["floor"])
         self._fl2 = self._build_floor(level, "floor_alt",      th["floor2"])
+        self._fl_v  = self._build_floor(level, "floor_path_v", th["floor"])
+        self._fl_h  = self._build_floor(level, "floor_path_h", th["floor"])
+        self._fl_c  = self._build_floor(level, "floor_path_c", th["floor"])
+        self._fl_c2 = self._build_floor(level, "floor_path_c2",th["floor"])
+        self._fl_c3 = self._build_floor(level, "floor_path_c3",th["floor"])
+        self._fl_c4 = self._build_floor(level, "floor_path_c4",th["floor"])
+        self._fl_x  = self._build_floor(level, "floor_path_x", th["floor"])
         self._wf  = self._build_wall (level, "wall_fixed",     th["fixed"], False)
         self._wf2 = self._build_wall (level, "wall_fixed2",    th["fixed"], False)
         self._wb  = self._build_wall (level, "wall_breakable",  th["break"], True)
         self._wb2 = self._build_wall (level, "wall_breakable2", th["break"], True)
+        self._wb_broken  = self._build_broken(level, "wall_breakable")
+        self._wb2_broken = self._build_broken(level, "wall_breakable2")
+        self._wp1 = self._build_path(level, "wall_path_1")
+        self._wp2 = self._build_path(level, "wall_path_2")
+        self._wp3 = self._build_path(level, "wall_path_3")
+        self._wp4 = self._build_path(level, "wall_path_4")
 
     def _build_floor(self, level, name, fallback):
-        TS = TILE_SIZE
-        surf = pygame.Surface((TS, TS)); surf.fill(fallback)
-        tile = get_tile(level, name)
-        if tile:
-            scaled = pygame.transform.smoothscale(tile, (TS, TS))
-            surf.blit(scaled, (0, 0))
-        return surf
-
-    def _build_wall(self, level, name, fallback, is_break):
         TS = TILE_SIZE
         surf = pygame.Surface((TS, TS))
         bg = get_tile(level, f"{name}_bg")
         if bg:
             surf.blit(pygame.transform.smoothscale(bg, (TS, TS)), (0, 0))
         else:
+            surf.fill(fallback)
+        tile = get_tile(level, name)
+        if tile:
+            surf.blit(pygame.transform.smoothscale(tile, (TS, TS)), (0, 0))
+        else:
+            surf.fill(fallback)
+        return surf
+
+    def _build_wall(self, level, name, fallback, is_break):
+        TS = TILE_SIZE
+        surf = pygame.Surface((TS, TS))
+        base = get_tile(level, "wall_bg")
+        if base:
+            surf.blit(pygame.transform.smoothscale(base, (TS, TS)), (0, 0))
+        else:
             surf.fill(self._theme["floor"])
+        bg = get_tile(level, f"{name}_bg")
+        if bg:
+            surf.blit(pygame.transform.smoothscale(bg, (TS, TS)), (0, 0))
         tile = get_tile(level, name)
         if tile:
             surf.blit(pygame.transform.smoothscale(tile, (TS, TS)), (0, 0))
@@ -74,9 +96,37 @@ class Map:
                 pygame.draw.rect(surf, BLUE_CORNER, (cx, cy, 7, 7))
         return surf
 
+    def _build_broken(self, level, name):
+        TS = TILE_SIZE
+        surf = pygame.Surface((TS, TS))
+        base = get_tile(level, "wall_bg")
+        if base:
+            surf.blit(pygame.transform.smoothscale(base, (TS, TS)), (0, 0))
+        else:
+            surf.fill(self._theme["floor"])
+        bg = get_tile(level, f"{name}_bg")
+        if bg:
+            surf.blit(pygame.transform.smoothscale(bg, (TS, TS)), (0, 0))
+        return surf
+
+    def _build_path(self, level, name):
+        TS = TILE_SIZE
+        surf = pygame.Surface((TS, TS))
+        base = get_tile(level, "wall_bg")
+        if base:
+            surf.blit(pygame.transform.smoothscale(base, (TS, TS)), (0, 0))
+        else:
+            surf.fill(self._theme["floor"])
+        tile = get_tile(level, name)
+        if tile:
+            surf.blit(pygame.transform.smoothscale(tile, (TS, TS)), (0, 0))
+        return surf
+
     # ── accessors ────────────────────────────────────────────────────────────
     def tile_at(self, row, col):
-        if 0 <= row < self.rows and 0 <= col < self.cols: return self.grid[row][col]
+        if 0 <= row < self.rows and 0 <= col < self.cols:
+            v = self.grid[row][col]
+            return 0 if v >= 3 else v
         return 1
     def pixel_to_tile(self, px, py):
         col = (px - self.rect.left) // TILE_SIZE
@@ -86,7 +136,7 @@ class Map:
         return self._trects[row][col]
     def break_tile(self, row, col):
         if 0<=row<self.rows and 0<=col<self.cols and self.grid[row][col]==2:
-            self.grid[row][col]=0; return True
+            self.grid[row][col]=99; return True
         return False
     def is_solid(self, row, col): return self.tile_at(row, col) != 0
 
@@ -99,4 +149,16 @@ class Map:
                 if   val == 0: screen.blit(self._fl2 if self._alt[r][c] else self._fl, rect)
                 elif val == 1: screen.blit(self._wf2 if self._wvar[r][c] else self._wf, rect)
                 elif val == 2: screen.blit(self._wb2 if self._wvar[r][c] else self._wb, rect)
+                elif val == 3: screen.blit(self._fl_v, rect)
+                elif val == 4: screen.blit(self._fl_h, rect)
+                elif val == 5: screen.blit(self._fl_c, rect)
+                elif val == 6: screen.blit(self._fl_c2, rect)
+                elif val == 7: screen.blit(self._fl_c3, rect)
+                elif val == 8: screen.blit(self._fl_c4, rect)
+                elif val == 9: screen.blit(self._fl_x, rect)
+                elif val == 10: screen.blit(self._wp1, rect)
+                elif val == 11: screen.blit(self._wp2, rect)
+                elif val == 12: screen.blit(self._wp3, rect)
+                elif val == 13: screen.blit(self._wp4, rect)
+                elif val == 99: screen.blit(self._wb2_broken if self._wvar[r][c] else self._wb_broken, rect)
         pygame.draw.rect(screen, (55, 65, 85), self.rect, 2)
