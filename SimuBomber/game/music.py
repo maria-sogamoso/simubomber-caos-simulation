@@ -19,8 +19,8 @@ TRACKS = {
 _current: str | None = None
 _pending: str | None = None
 _fading = False
-FADE_MS = 1500
-MUSIC_VOL = 0.35
+FADE_MS = 500
+MUSIC_VOL = 0.15
 
 
 def switch(track_name: str) -> None:

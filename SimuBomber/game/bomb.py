@@ -223,7 +223,7 @@ class BombSystem:
                         r, c = self.game_map.pixel_to_tile(rect.x, rect.y)
                         self.game_map.break_tile(r, c)
                 try:
-                    from game.sounds import play; play("explosion.wav", 0.8)
+                    from game.sounds import play; play("explosion.wav", 1.0)
                 except Exception: pass
         self.bombs = [b for b in self.bombs if not b.should_remove()]
 

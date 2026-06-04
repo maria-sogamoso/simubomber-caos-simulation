@@ -4,7 +4,7 @@ import pygame
 from assets_loader import get_sound
 
 _mixer_ok = False
-_SFX_MULT = 2.0
+_SFX_MULT = 1.2
 
 
 def init_sound() -> None:

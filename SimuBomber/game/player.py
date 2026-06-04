@@ -72,7 +72,7 @@ class Player:
         self.lives = max(0.0, self.lives - float(dmg))
         self.invulnerable = True; self.last_hit_time = now
         try:
-            from game.sounds import play; play("hit.wav", 0.6)
+            from game.sounds import play; play("hit.wav", 0.4)
         except Exception: pass
 
     def draw(self, screen):

@@ -208,10 +208,10 @@ class GameLoop:
                         surviving.append(en)
                     else:
                         self.powerup_system.spawn_from_enemy(en.rect.center)
-                        play("enemy_die.wav", 0.6)
+                        play("enemy_die.wav", 0.7)
                 else:
                     self.powerup_system.spawn_from_enemy(en.rect.center)
-                    play("enemy_die.wav", 0.6)
+                    play("enemy_die.wav", 0.7)
             else:
                 surviving.append(en)
         self.enemies = surviving
@@ -229,7 +229,7 @@ class GameLoop:
         self.metrics.sample_bomb_queue(now, self.bomb_system.observe_queue())
 
         if self.player.lives<=0:
-            self.state=self.ST_GAME_OVER; self._state_timer=0; play("game_over.wav",0.7)
+            self.state=self.ST_GAME_OVER; self._state_timer=0; play("game_over.wav",0.6)
         elif not self.enemies:
             self._begin_transition()
 
@@ -248,7 +248,7 @@ class GameLoop:
             story_type = "transition"
         self.state = self.ST_STORY
         self.story = StoryPresenter(self.screen, pages, self.char_id, story_type)
-        play("level_clear.wav", 0.75)
+        play("level_clear.wav", 0.7)
 
     def _advance_level(self):
         if self.current_level<TOTAL_LEVELS:
