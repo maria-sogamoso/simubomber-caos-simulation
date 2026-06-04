@@ -56,20 +56,22 @@ class Map:
 
     def _build_wall(self, level, name, fallback, is_break):
         TS = TILE_SIZE
-        surf = pygame.Surface((TS, TS)); surf.fill(self._theme["floor"])
+        surf = pygame.Surface((TS, TS))
+        bg = get_tile(level, f"{name}_bg")
+        if bg:
+            surf.blit(pygame.transform.smoothscale(bg, (TS, TS)), (0, 0))
+        else:
+            surf.fill(self._theme["floor"])
         tile = get_tile(level, name)
         if tile:
-            scaled = pygame.transform.smoothscale(tile, (TS, TS))
-            surf.blit(scaled, (0, 0))
+            surf.blit(pygame.transform.smoothscale(tile, (TS, TS)), (0, 0))
         else:
             surf.fill(fallback)
-        if is_break:
+        if is_break and level != 1:
             for i in range(3):
                 pygame.draw.rect(surf, BLUE_BORDER, (i, i, TS-2*i, TS-2*i), 1)
             for cx, cy in [(0,0),(TS-7,0),(0,TS-7),(TS-7,TS-7)]:
                 pygame.draw.rect(surf, BLUE_CORNER, (cx, cy, 7, 7))
-        else:
-            pygame.draw.rect(surf, (0, 0, 0), (0, 0, TS, TS), 1)
         return surf
 
     # ── accessors ────────────────────────────────────────────────────────────
