@@ -10,6 +10,7 @@ import config
 from config import WIDTH, HEIGHT, CHARACTER_STATS
 from assets_loader import get_char_frames
 from game.sounds import play
+from game import music
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 _ASSETS    = os.path.join(os.path.dirname(__file__), '..', 'assets')
@@ -220,8 +221,11 @@ def run_main_menu(screen: pygame.Surface) -> str:
     MENU_Y = TITLE_Y + TITLE_H + 30
     MENU_X = WIDTH // 2 - BTN_W // 2
 
+    music.switch("menu")
+
     while True:
         dt = clock.tick(60); tick += dt; torch_ph += dt * 0.005
+        music.update(dt)
 
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT: return "quit"

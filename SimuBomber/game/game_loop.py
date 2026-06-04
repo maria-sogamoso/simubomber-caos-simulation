@@ -21,6 +21,7 @@ from game.hud      import draw_hud, draw_message
 from game.sounds   import play
 from game.movement import move_and_collide, hitbox_of
 from game.story    import StoryPresenter, STORY_INTRO, STORY_TRANSITIONS, STORY_ENDING
+from game import music
 
 
 def _find_free(gm, pref_c, pref_r):
@@ -52,6 +53,7 @@ class GameLoop:
         self._bomb_hit_log: dict[int, set[int]] = {}
         self.dynamics = SistemaDinamicoRuntime()
         self.story = StoryPresenter(screen, STORY_INTRO, char_id, "intro")
+        self._mission_fade = 255
 
     def _load_level(self, level):
         self.game_map       = Map(level)
@@ -64,6 +66,8 @@ class GameLoop:
         self.enemies        = self._spawn_enemies(level, mr)
         self.chaos          = 0.0
         self._bomb_hit_log  = {}
+        self._mission_fade = 255
+        music.switch(f"level{level}")
 
     def _spawn_enemies(self, level, mr):
         gm=self.game_map; c,r=gm.cols,gm.rows; out=[]
@@ -121,6 +125,9 @@ class GameLoop:
         elif s==2: self.result="menu"
 
     def update(self, dt):
+        music.update(dt)
+        if self._mission_fade > 0:
+            self._mission_fade = max(0, self._mission_fade - int(dt * 2.5))
         if self.state == self.ST_INTRO:
             self.story.update(dt)
             if self.story.done:
@@ -233,6 +240,7 @@ class GameLoop:
         else:
             pages = STORY_ENDING
             story_type = "ending"
+            music.switch("ending")
         if not pages:
             pages = [{"title": f"Nivel {self.current_level} Completado",
                       "lines": ["Prepárate para el siguiente nivel."],
@@ -267,6 +275,12 @@ class GameLoop:
             if   self.state==self.ST_PAUSED:     self._draw_pause()
             elif self.state==self.ST_GAME_OVER:  self._draw_game_over()
             elif self.state==self.ST_VICTORY:    self._draw_victory()
+
+        if self._mission_fade > 0:
+            ov = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            ov.fill((0, 0, 0, self._mission_fade))
+            self.screen.blit(ov, (0, 0))
+
         pygame.display.flip()
 
     def _draw_pause(self):
@@ -300,7 +314,7 @@ class GameLoop:
 
     def _draw_victory(self):
         import math
-        progress = min(1.0, self._state_timer / 1500)
+        progress = min(1.0, self._state_timer / 2000)
         alpha = int(255 * progress)
 
         # Themed background (emerald/green — equilibrium restored)

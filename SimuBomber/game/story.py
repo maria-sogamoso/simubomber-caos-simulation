@@ -202,7 +202,8 @@ def _draw_crystal(screen, cx, cy, size, phase, color):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class StoryPresenter:
-    TYPE_SPEED = 28
+    TYPE_SPEED = 42
+    PAGE_EXIT_MS = 700
 
     def __init__(self, screen, pages, char_id="char1", story_type="transition"):
         self.screen = screen
@@ -219,6 +220,9 @@ class StoryPresenter:
 
         self._fade = 0
         self._tick = 0.0
+
+        self._page_exit = False
+        self._page_exit_alpha = 255
 
         self._particles = [_Particle(self._theme()) for _ in range(45)]
         self._crystal_phase = 0.0
@@ -238,20 +242,24 @@ class StoryPresenter:
         if self.done or event.type != pygame.KEYDOWN:
             return
         if event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
+            if self._page_exit:
+                return
             if not self._all_typed:
                 self._line_idx = len(self.pages[self.page_idx]["lines"])
                 self._char_idx = 0
                 self._all_typed = True
             else:
-                self._next_page()
+                self._page_exit = True
+                self._page_exit_alpha = 255
         elif event.key == pygame.K_ESCAPE:
             self.done = True
 
-    def _next_page(self):
+    def _actual_page_switch(self):
         self.page_idx += 1
         if self.page_idx >= len(self.pages):
             self.done = True
             return
+        self._page_exit = False
         self._line_idx = 0
         self._char_idx = 0
         self._all_typed = False
@@ -268,7 +276,13 @@ class StoryPresenter:
         for p in self._particles:
             p.update(dt, self._theme())
 
-        self._fade = min(255, self._fade + int(dt * 1.8))
+        if self._page_exit:
+            self._page_exit_alpha = max(0, self._page_exit_alpha - int(dt * 3.0))
+            if self._page_exit_alpha <= 0:
+                self._actual_page_switch()
+            return
+
+        self._fade = min(255, self._fade + int(dt * 1.0))
 
         if not self._all_typed:
             self._type_timer += dt
@@ -281,7 +295,7 @@ class StoryPresenter:
                     else:
                         self._line_idx += 1
                         self._char_idx = 0
-                        self._type_timer -= 250
+                        self._type_timer -= 400
                 else:
                     self._all_typed = True
 
@@ -291,7 +305,11 @@ class StoryPresenter:
 
         page = self.pages[self.page_idx]
         theme = page.get("theme", (40, 40, 60))
-        alpha = self._fade
+
+        if self._page_exit:
+            alpha = self._page_exit_alpha
+        else:
+            alpha = self._fade
 
         self._draw_bg(theme)
 
@@ -341,7 +359,7 @@ class StoryPresenter:
                                       y0 + len(lines) * 36 + 20))
 
         # Continue hint
-        if self._all_typed:
+        if self._all_typed and not self._page_exit:
             ha = int(160 + 60 * math.sin(self._tick * 0.004))
             h = self._fh.render("ENTER continuar  •  ESC saltar", True, (160, 160, 180))
             h.set_alpha(ha)

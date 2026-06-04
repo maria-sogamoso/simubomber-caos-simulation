@@ -4,6 +4,7 @@ import pygame
 from assets_loader import get_sound
 
 _mixer_ok = False
+_SFX_MULT = 2.0
 
 
 def init_sound() -> None:
@@ -20,5 +21,5 @@ def play(name: str, volume: float = 0.7) -> None:
         return
     snd = get_sound(name)
     if snd:
-        snd.set_volume(volume)
+        snd.set_volume(min(1.0, volume * _SFX_MULT))
         snd.play()
